@@ -235,12 +235,13 @@ The runtime ID is **`bots-fleet`**, derived from package **`bb-plugin-bots-fleet
 Use `bb plugin reload bots-fleet` for this plugin. The community plugin named
 `bots` is a different plugin; this one does not read its storage automatically.
 
-Machines that ran **Bots Sidebar** (`bots-sidebar`) migrate with `bb bots migrate-from bots-sidebar`
-(see the Agent Fleet design docs). That path preserves the plugin database, private exports,
-and legacy KV records while the old plugin is stopped. Pending startup tokens must be resolved
-before switching. Keep a backup, retire the old namespace, and install the new ID; do not change
-bot IDs, main pointers, thread bindings, or historical thread origin IDs. Client layout and
-compose-draft keys intentionally remain stable.
+The earlier private build used `bots`. Its local migration must preserve the entire
+plugin database, private exports, and legacy KV records while the old plugin is
+stopped. Pending startup tokens must be resolved before switching. Keep a backup,
+retire the old namespace, and install the new ID; do not change bot IDs, main pointers,
+thread bindings, or historical thread origin IDs. Client layout and compose-draft
+keys intentionally remain stable. If a device explicitly pinned the old sidebar,
+select **Bots Fleet** again in Settings → Sidebar; Automatic needs no change.
 
 ## Migration and cleanup
 

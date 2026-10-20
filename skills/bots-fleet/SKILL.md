@@ -28,3 +28,8 @@ The runtime plugin ID is `bots-fleet`; its CLI is `bb bots`.
   and Undo. Older unassigned Chats appear under the clickable Other count.
 - Edit bot has Bot, Context, and Projects tabs. Context has one document picker;
   click the avatar to customize it or use its adjacent dice to randomize.
+  Saving is explicit. Per-bot AGENTS.md is retired; workspace AGENTS.md applies.
+- Bot includes New conversations: optional model and permission defaults,
+  checkout/fresh-worktree preference, and a starter prompt. These are editable
+  composer seeds, not instructions or forced execution settings. Existing
+  drafts and submitted choices win. Presets never change an existing session.
