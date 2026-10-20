@@ -1,0 +1,37 @@
+name: PR Quality
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pr-quality:
+    name: PR Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Install BB (plugin build)
+        run: |
+          curl -fsSL -o bb.AppImage \
+            "https://github.com/get-bb/bb/releases/download/desktop-v0.46.1/bb-0.46.1-x86_64.AppImage"
+          chmod +x bb.AppImage
+
+      - name: Plugin build
+        run: ./bb.AppImage --appimage-extract-and-run plugin build
