@@ -1,3 +1,4 @@
+/** Bot registry RPC implementations; server.ts registers hooks and wires these handlers. */
 import { createHash, randomUUID } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { z } from "zod";
