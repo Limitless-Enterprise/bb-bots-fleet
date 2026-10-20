@@ -1,4 +1,4 @@
-# Bots Sidebar
+# Bots Fleet
 
 Requires BB 0.46.1 or newer (Plugin SDK 0.6.49). Conversation menus and archive
 buttons use BB's native thread actions, including confirmation, Undo, and actions
@@ -231,17 +231,16 @@ in bot state.
 
 ## Plugin identity
 
-The runtime ID is **`bots-sidebar`**, derived from package **`bb-plugin-bots-sidebar`**.
-Use `bb plugin reload bots-sidebar` for this plugin. The community plugin named
+The runtime ID is **`bots-fleet`**, derived from package **`bb-plugin-bots-fleet`**.
+Use `bb plugin reload bots-fleet` for this plugin. The community plugin named
 `bots` is a different plugin; this one does not read its storage automatically.
 
-The earlier private build used `bots`. Its local migration must preserve the entire
-plugin database, private exports, and legacy KV records while the old plugin is
-stopped. Pending startup tokens must be resolved before switching. Keep a backup,
-retire the old namespace, and install the new ID; do not change bot IDs, main pointers,
-thread bindings, or historical thread origin IDs. Client layout and compose-draft
-keys intentionally remain stable. If a device explicitly pinned the old sidebar,
-select **Bots Sidebar** again in Settings → Sidebar; Automatic needs no change.
+Machines that ran **Bots Sidebar** (`bots-sidebar`) migrate with `bb bots migrate-from bots-sidebar`
+(see the Agent Fleet design docs). That path preserves the plugin database, private exports,
+and legacy KV records while the old plugin is stopped. Pending startup tokens must be resolved
+before switching. Keep a backup, retire the old namespace, and install the new ID; do not change
+bot IDs, main pointers, thread bindings, or historical thread origin IDs. Client layout and
+compose-draft keys intentionally remain stable.
 
 ## Migration and cleanup
 
@@ -270,8 +269,8 @@ switching storage versions; the prior code checkpoint is
 Use BB 0.46.1 or newer and Node.js 24. No BB-core change is required for this model.
 
 ```sh
-git clone --branch main https://github.com/tobi/bb-bots-sidebar.git
-cd bb-bots-sidebar
+git clone --branch main https://github.com/Limitless-Enterprise/bb-bots-fleet.git
+cd bb-bots-fleet
 npm ci
 npm run typecheck
 npm test

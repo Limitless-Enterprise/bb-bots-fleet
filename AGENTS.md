@@ -1,8 +1,8 @@
 # Independent Bots development
 
-Work on `main` in the installed Bots Sidebar source checkout. Confirm its path
+Work on `main` in the installed Bots Fleet source checkout. Confirm its path
 with `bb plugin list` before editing. Do not edit or reload older personal-workspace
-worktrees. Build and reload `bots-sidebar` from this checkout; verify the installed
+worktrees. Build and reload `bots-fleet` from this checkout; verify the installed
 source before deploying. The owner requested private, ID-keyed state,
 not bot-home projects or special execution directories. Explicit user-created
 work projects are allowed, but never create a backing project for bot storage.
@@ -20,8 +20,8 @@ existing conversation histories and track legacy home project IDs for compatibil
 
 ## Plugin identity
 
-- Runtime ID: `bots-sidebar`; package: `bb-plugin-bots-sidebar`; display name:
-  Bots Sidebar. The sidebar heading can remain Bots.
+- Runtime ID: `bots-fleet`; package: `bb-plugin-bots-fleet`; display name:
+  Bots Fleet. The sidebar heading can remain Bots.
 - `bots` is another marketplace plugin's ID. Do not add a runtime alias or read
   its private directory/KV automatically. Our old local namespace was migrated
   explicitly with backups. Historical thread origin IDs remain unchanged; durable

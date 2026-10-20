@@ -1,9 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
 import type { BbPluginApi, PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
 import type { z } from "zod";
 import { rpcContract, stateReadSchema, stateMutationSchema, stateMutationToolSchema, stateMutationResultSchema, normalizeStateMutation, type BotMetadata, type BotStateMutation } from "./contract";
-import { createBotStore, EMPTY_HASHES, nextTimestamp } from "./lib/bot-store";
+import { createBotStore, nextTimestamp } from "./lib/bot-store";
 import { applyState, BotStateConflictError, createPrivateBotState, stateContent } from "./lib/private-state";
+import { createBotOps } from "./lib/bot-ops";
 import { memoryFacts, mutateStateDocument } from "./lib/state-actions";
 import { createLegacyImporter } from "./lib/migrate-bots";
 import { browseProjectDirectory, createWorkProject } from "./lib/project-creation";
@@ -18,7 +18,6 @@ export type { BotAvatar, BotMetadata, BotSection, ProjectCreateInput } from "./c
 
 const CHANGED = "project-bots-changed";
 const START_MARKER = /^\[bb-bot-start:([a-f0-9-]{36})\]/;
-const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
 
 export default async function plugin(bb: BbPluginApi) {
   const store = createBotStore(bb);
@@ -48,22 +47,6 @@ export default async function plugin(bb: BbPluginApi) {
     const inherited = (context.parentThreadId && store.owner(context.parentThreadId)) || (context.sourceThreadId && store.owner(context.sourceThreadId));
     return inherited || null;
   }
-  async function resolveOwner(threadId: string, persist = true): Promise<string | null> {
-    const chain: string[] = [];
-    let current: string | null = threadId;
-    let botId: string | null = null;
-    while (current && !chain.includes(current)) {
-      const explicit = store.owner(current);
-      if (explicit) { botId = explicit; break; }
-      const thread = await bb.sdk.threads.get({ threadId: current });
-      chain.push(current);
-      botId = (thread.parentThreadId && store.owner(thread.parentThreadId)) || (thread.sourceThreadId && store.owner(thread.sourceThreadId)) || null;
-      if (botId) break;
-      current = thread.parentThreadId ?? thread.sourceThreadId;
-    }
-    if (botId && persist) for (const id of chain) store.bind(id, botId);
-    return botId;
-  }
   async function validateLinks(ids: string[]) {
     if (new Set(ids).size !== ids.length) throw new Error("A project can only be linked once");
     const projects = await bb.sdk.projects.list();
@@ -78,49 +61,8 @@ export default async function plugin(bb: BbPluginApi) {
   async function validateConversationProject(bot: BotMetadata, projectId: string) {
     if (projectId !== await personalProjectId() && !bot.linkedProjectIds.includes(projectId)) throw new Error("Choose a projectless conversation or link this project to the bot first");
   }
-  function saveBotIdentity({ botId, expectedUpdatedAt, expectedStateHashes, ownedProjectIds, memory, settings, ...fields }: z.infer<typeof rpcContract.bot_update.input>) {
-    return serial("registry", () => serial(botId, async () => {
-      const bot = await state.prepare(botId);
-      if (bot.updatedAt !== expectedUpdatedAt) throw new Error("Bot changed while editing. Reopen the editor or read identity again to avoid overwriting newer changes.");
-      if (JSON.stringify(fields.linkedProjectIds) !== JSON.stringify(bot.linkedProjectIds)) await validateLinks(fields.linkedProjectIds);
-      if (ownedProjectIds) {
-        const existingOwned = new Set(store.ownedProjects(botId));
-        await validateLinks(ownedProjectIds.filter((id) => !existingOwned.has(id)));
-      }
-      if (fields.hostId !== undefined && fields.hostId !== bot.hostId && !(await bb.sdk.hosts.list()).some((host) => host.id === fields.hostId)) throw new Error("Choose an enrolled execution machine");
-      validateSection(fields.sectionId);
-      const next = store.mutateWithProjects(botId, (current) => {
-        if (current.updatedAt !== expectedUpdatedAt) throw new Error("Bot changed while editing. Read the current identity before saving.");
-        let next = { ...current, ...fields };
-        if (memory !== undefined) next = applyState(next, "MEMORY.md", memory);
-        if (settings !== undefined) next = applyState(next, "settings.json", stateContent({ ...next, settings }, "settings.json"));
-        for (const file of ["SOUL.md", "MEMORY.md", "settings.json"] as const) {
-          if (stateContent(next, file) === stateContent(current, file)) continue;
-          if (current.stateHashes[file] !== expectedStateHashes[file]) throw new BotStateConflictError(`${file} changed while editing. Read the current state before saving.`);
-        }
-        return {
-          ...next,
-          stateHashes: {
-            ...current.stateHashes,
-            "SOUL.md": sha256(next.soul),
-            ...(memory !== undefined ? { "MEMORY.md": sha256(next.memory) } : {}),
-            ...(settings !== undefined ? { "settings.json": sha256(stateContent(next, "settings.json")) } : {}),
-          },
-          updatedAt: nextTimestamp(current.updatedAt),
-        };
-      }, ownedProjectIds);
-      await state.mirror(next); publish(); return next;
-    }));
-  }
-  async function updateProjectRole(botId: string, action: "join" | "leave" | "own" | "release", projectId: string) {
-    return serial("registry", () => serial(botId, async () => {
-      store.require(botId);
-      if (action === "join" || action === "own") await validateLinks([projectId]);
-      const result = store.changeProjectRole(botId, projectId, action);
-      if (result.changed) { await state.mirror(result.bot); publish(); }
-      return result;
-    }));
-  }
+  const ops = createBotOps({ bb, store, state, publish, serial, importLegacy, personalProjectId, validateLinks, validateSection, validateConversationProject });
+  const { resolveOwner, saveBotIdentity, updateProjectRole, createBot, createSection, startConversation } = ops;
   type RoutingThread = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;
   async function routeNewThread(thread: RoutingThread, atCreation: boolean) {
     const existing = store.owner(thread.id);
@@ -216,7 +158,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.agents.configure((ctx) => {
     const botId = contextOwner(ctx);
     const bot = botId ? store.get(botId) : null;
-    return bot ? { tools: ["bot_read_state", "bot_update_state"], skills: ["bots-sidebar"], instructions: botInstructions(bot, botProjectContext(bot, ctx.project, store)) } : { tools: [], skills: [] };
+    return bot ? { tools: ["bot_read_state", "bot_update_state"], skills: ["bots-fleet"], instructions: botInstructions(bot, botProjectContext(bot, ctx.project, store)) } : { tools: [], skills: [] };
   });
   bb.agents.registerTool({
     name: "bot_read_state", description: "Read this bot's embedded identity and revision, memory facts, settings, or linked/available projects. Supply only target: identity, memory, settings, or project. State is managed privately by BB and is independent of the current machine or working directory.",
@@ -270,17 +212,7 @@ export default async function plugin(bb: BbPluginApi) {
       const legacyHomes = new Set(bots.map((bot) => bot.legacyHomeProjectId));
       return { bots, projectOwners: store.projectOwners().map(({ projectId, botId }) => ({ projectId, botId })), warnings: [...warnings, ...state.warnings()], personalProjectId: personalId, threadBindings: store.bindings(), sections: store.sections(), hosts: hosts.map((host) => ({ id: host.id, name: host.name, connected: host.status === "connected" })), projects: projects.filter((project) => project.kind === "standard" && !legacyHomes.has(project.id)).map((project) => ({ id: project.id, name: project.name })) };
     },
-    bot_create: ({ name, role, hostId, avatar, sectionId, linkedProjectIds, ownedProjectIds, soul, memory, settings, launchPreset }) => serial("registry", async () => {
-      await importLegacy(); await validateLinks(linkedProjectIds); if (ownedProjectIds) await validateLinks(ownedProjectIds); validateSection(sectionId);
-      if (!(await bb.sdk.hosts.list()).some((host) => host.id === hostId)) throw new Error("Choose an enrolled execution machine");
-      const id = `bot_${randomUUID().replaceAll("-", "")}`;
-      let created: BotMetadata = { id, name, role, hostId, stateReady: true, legacyHomeProjectId: null, avatar, sectionId, linkedProjectIds, soul, agents: "", memory: "", settings: {}, stateHashes: { ...EMPTY_HASHES }, order: store.list().length, mainThreadId: null, hiddenUntilActivity: false, hiddenAt: null, updatedAt: Date.now(), legacyProjectId: null };
-      if (memory !== undefined) created = applyState(created, "MEMORY.md", memory);
-      if (launchPreset !== undefined) created.launchPreset = launchPreset;
-      if (settings !== undefined) created = applyState(created, "settings.json", stateContent({ ...created, settings }, "settings.json"));
-      store.saveWithProjects(created, ownedProjectIds);
-      const ready = await state.prepare(id); publish(); return ready;
-    }),
+    bot_create: createBot,
     bot_prepare: ({ botId }) => serial(botId, () => state.prepare(botId)),
     bot_update: saveBotIdentity,
     bots_reorder: ({ bots: placements }) => serial("registry", async () => {
@@ -289,7 +221,7 @@ export default async function plugin(bb: BbPluginApi) {
       store.saveAll(placements.map(({ botId, sectionId }, order) => { validateSection(sectionId); const bot = store.require(botId); return { ...bot, sectionId, order, updatedAt: nextTimestamp(bot.updatedAt) }; }));
       publish(); return { ok: true } as const;
     }),
-    section_create: ({ name }) => serial("registry", async () => { const saved = store.sections(); const section = { id: randomUUID(), name, order: saved.length }; store.saveSections([...saved, section]); publish(); return section; }),
+    section_create: ({ name }) => createSection(name),
     section_update: ({ sectionId, name }) => serial("registry", async () => {
       const saved = store.sections(); const section = saved.find((section) => section.id === sectionId);
       if (!section) throw new Error("Section no longer exists");
@@ -310,18 +242,7 @@ export default async function plugin(bb: BbPluginApi) {
       const latest = store.require(botId);
       const next = store.save({ ...latest, mainThreadId: threadId, updatedAt: nextTimestamp(latest.updatedAt) }); publish(); return next;
     }),
-    conversation_create: async ({ botId, request, makeMain }) => {
-      if (request.projectId !== await personalProjectId()) await updateProjectRole(botId, "join", request.projectId);
-      return serial(botId, async () => {
-        const bot = await state.prepare(botId);
-        await validateConversationProject(bot, request.projectId);
-        const token = randomUUID(); store.stageStart(token, botId, request.projectId);
-        const thread = await bb.sdk.threads.spawn({ ...request, input: [...request.input, { type: "text", text: `[bb-bot-start:${token}]\nThis conversation belongs to bot ${bot.name}. Its identity and memory are embedded and managed by bot_read_state / bot_update_state, not files in the working directory.`, mentions: [], visibility: "agent-only" }] });
-        store.bind(thread.id, botId); store.cancelStart(token);
-        if (makeMain || !store.require(botId).mainThreadId) { const latest = store.require(botId); store.save({ ...latest, mainThreadId: thread.id, updatedAt: nextTimestamp(latest.updatedAt) }); }
-        publish(); return { threadId: thread.id };
-      });
-    },
+    conversation_create: startConversation,
     conversation_fork: async ({ botId, sourceThreadId, request }) => serial(botId, async () => {
       const bot = await state.prepare(botId);
       const source = await bb.sdk.threads.get({ threadId: sourceThreadId });

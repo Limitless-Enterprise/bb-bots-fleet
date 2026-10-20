@@ -122,7 +122,7 @@ describe("private bot identities", () => {
     await host.reload();
     const config = await host.harness.behavior.resolveAgentConfiguration(makePluginAgentConfigurationContext({ thread: { id: created.threadId }, project: { id: PERSONAL_ID } }));
     expect(config.instructions).toContain("You are Atlas.");
-    expect(config.skills).toEqual(["bots-sidebar"]);
+    expect(config.skills).toEqual(["bots-fleet"]);
     expect(host.store.require(bot.id).mainThreadId).toBe(created.threadId);
   });
 
