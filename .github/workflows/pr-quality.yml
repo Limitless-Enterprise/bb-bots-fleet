@@ -10,6 +10,7 @@ jobs:
   pr-quality:
     name: PR Quality
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -36,5 +37,5 @@ jobs:
       - name: Plugin build
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb
+          sudo apt-get install -y --no-install-recommends xvfb
           xvfb-run -a ./bb.AppImage --appimage-extract-and-run plugin build
