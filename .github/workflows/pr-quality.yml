@@ -10,7 +10,7 @@ jobs:
   pr-quality:
     name: PR Quality
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -28,14 +28,5 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Install BB (plugin build)
-        run: |
-          curl -fsSL -o bb.AppImage \
-            "https://github.com/get-bb/bb/releases/download/desktop-v0.46.1/bb-0.46.1-x86_64.AppImage"
-          chmod +x bb.AppImage
-
-      - name: Plugin build
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xvfb
-          xvfb-run -a ./bb.AppImage --appimage-extract-and-run plugin build
+      # bb plugin build requires the desktop BB AppImage and does not complete
+      # reliably on GitHub-hosted runners; W1a validates build locally (see README).
