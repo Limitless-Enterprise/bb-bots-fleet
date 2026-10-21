@@ -6,8 +6,8 @@ This plugin is a fork of [tobi/bb-bots-sidebar](https://github.com/tobi/bb-bots-
 at commit `d54ae23` (release 1.0.0). Limitless Enterprise maintains it as **Bots
 Fleet**. Track upstream through the `upstream` git remote. The upstream repository
 currently publishes no licence file (**licence status: pending owner decision**).
-Agent Fleet design docs ([ADR 0006](https://github.com/Limitless-Enterprise/srs/blob/docs/agent-fleet-design/agent-fleet/03-architecture/adrs/0006-bots-fleet-fork-and-rename.md),
-[LLD §8](https://github.com/Limitless-Enterprise/srs/blob/docs/agent-fleet-design/agent-fleet/03-architecture/low-level-design-bots-cli.md))
+Agent Fleet design docs ([ADR 0006](https://github.com/Limitless-Enterprise/srs/blob/main/agent-fleet/03-architecture/adrs/0006-bots-fleet-fork-and-rename.md),
+[Fleet CLI LLD §8](https://github.com/Limitless-Enterprise/srs/blob/main/agent-fleet/03-architecture/low-level-design-bots-cli.md))
 require upstream attribution here; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 covers bloub only.
 
@@ -269,16 +269,27 @@ in bot state.
 ## Plugin identity
 
 The runtime ID is **`bots-fleet`**, derived from package **`bb-plugin-bots-fleet`**.
-Use `bb plugin reload bots-fleet` for this plugin. The community plugin named
-`bots` is a different plugin; this one does not read its storage automatically.
+Settings shows **Bots Fleet**. Reload with `bb plugin reload bots-fleet`. The
+community plugin named `bots` is unrelated; Bots Fleet never reads its storage.
 
-The earlier private build used `bots`. Its local migration must preserve the entire
-plugin database, private exports, and legacy KV records while the old plugin is
-stopped. Pending startup tokens must be resolved before switching. Keep a backup,
-retire the old namespace, and install the new ID; do not change bot IDs, main pointers,
-thread bindings, or historical thread origin IDs. Client layout and compose-draft
-keys intentionally remain stable. If a device explicitly pinned the old sidebar,
-select **Bots Fleet** again in Settings → Sidebar; Automatic needs no change.
+Bots Fleet replaces **Bots Sidebar** (`bots-sidebar`) on a machine; the two do not
+run together. Installing Bots Fleet starts with empty plugin storage until you import
+the old data once:
+
+1. `bb plugin disable bots-sidebar`
+2. `bb plugin install path:/path/to/bb-bots-fleet --yes` (or your package source)
+3. `bb bots migrate-from bots-sidebar`
+4. After verifying bots, conversations, and private exports, `bb plugin remove bots-sidebar`
+
+`bb bots migrate-from bots-sidebar` copies `data.db` and the `state/` exports from
+`<data-dir>/plugins/bots-sidebar/` into Bots Fleet after confirming Bots Sidebar is
+disabled and has no pending conversation-start tokens. It records the migration in
+`bot_state` and is one-time only. Bot IDs, main pointers, thread bindings, and
+historical `originPluginId` values (including `bots-sidebar` and the earlier private
+`bots` namespace) stay unchanged; routing still resolves through saved bindings.
+Keep a backup of both plugin directories before switching. Client layout and
+compose-draft keys intentionally remain stable. If Settings → Sidebar explicitly
+pinned Bots Sidebar, select **Bots Fleet**; Automatic needs no change.
 
 ## Migration and cleanup
 
