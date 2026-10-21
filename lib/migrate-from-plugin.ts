@@ -53,22 +53,26 @@ export async function migrateFromPlugin(bb: BbPluginApi, store: BotStore, source
     rmSync(scratchDir, { recursive: true, force: true });
     throw new Error("Resolve pending conversation starts in bots-sidebar before migrating");
   }
+  const sourceState = join(sourceDir, "state");
+  const copiedState = existsSync(sourceState);
+  if (copiedState) {
+    mkdirSync(join(targetDir, "state"), { recursive: true, mode: 0o700 });
+    cpSync(sourceState, join(targetDir, "state"), { recursive: true, force: true });
+  }
+  const migrationMeta = { sourcePluginId, migratedAt: Date.now(), sourceDatabase: sourceDbPath };
   const target = bb.storage.database();
   const summary = target.transaction(() => {
     for (const table of DATA_TABLES) copyTable(legacy, target, table);
     const botCount = (target.prepare("SELECT COUNT(*) AS count FROM bots").get() as { count: number }).count;
     const bindingCount = (target.prepare("SELECT COUNT(*) AS count FROM bot_threads").get() as { count: number }).count;
+    target.prepare("INSERT INTO bot_state(key,data) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET data=excluded.data").run(
+      PLUGIN_MIGRATION_STATE_KEY,
+      JSON.stringify(migrationMeta),
+    );
     return { botCount, bindingCount };
   }).immediate();
   legacy.close();
   rmSync(scratchDir, { recursive: true, force: true });
-  let copiedStateBots = 0;
-  const sourceState = join(sourceDir, "state");
-  if (existsSync(sourceState)) {
-    mkdirSync(join(targetDir, "state"), { recursive: true, mode: 0o700 });
-    cpSync(sourceState, join(targetDir, "state"), { recursive: true, force: true });
-    copiedStateBots = summary.botCount;
-  }
-  store.setState(PLUGIN_MIGRATION_STATE_KEY, { sourcePluginId, migratedAt: Date.now(), sourceDatabase: sourceDbPath });
+  const copiedStateBots = copiedState ? summary.botCount : 0;
   return { sourcePluginId, botCount: summary.botCount, bindingCount: summary.bindingCount, copiedStateBots };
 }

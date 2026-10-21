@@ -6,6 +6,7 @@ import { runBotsMemoryCommand } from "./bots-memory-cli";
 import { listBotConversations } from "./bot-conversations";
 import { conversationRoots, orderConversations } from "./conversation-order";
 import { migrateFromPlugin } from "./migrate-from-plugin";
+import { SIDEBAR_MIGRATION_PENDING_WARNING, sidebarMigrationPending } from "./migrate-bots";
 
 const USAGE = `bb bots list [--json] [--limit 1-100] [--offset N]
 bb bots show <bot-id-or-exact-name> [--json]
@@ -120,6 +121,7 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
           return { exitCode: 0, stdout: options.json ? JSON.stringify({ id: bot.id, name: bot.name, role: bot.role, memory: stats }) : `${bot.id}\tmemory.entries=${stats.entries}\tmemory.bytes=${stats.bytes}` };
         }
         if (options.command === "list") {
+          const pendingHint = sidebarMigrationPending(bb, store) ? SIDEBAR_MIGRATION_PENDING_WARNING : null;
           const all = store.list();
           const { activity, firstThreads } = await listActivity(ctx);
           const projects = new Map((await bb.sdk.projects.list()).map(project => [project.id, project.name]));
@@ -137,13 +139,17 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
           }); });
           const nextOffset = options.offset + bots.length < all.length ? options.offset + bots.length : null;
           const value = { bots, total: all.length, nextOffset };
-          return { exitCode: 0, stdout: options.json ? JSON.stringify(value) : [
+          return {
+            exitCode: 0,
+            ...(pendingHint ? { stderr: `${pendingHint}\n` } : {}),
+            stdout: options.json ? JSON.stringify(value) : [
             "BOT ID (MESSAGE TARGET)\tNAME\tSTATUS\tVISIBILITY\tOWNED PROJECTS\tJOINED PROJECTS\tROLE\tFIRST CONVERSATION",
             ...bots.map((bot) => [bot.id, printable(bot.name), bot.status, bot.visibility, bot.ownedProjects.map(p => printable(p.name)).join(", ") || "—", bot.joinedProjects.map(p => printable(p.name)).join(", ") || "—", printable(bot.role), bot.mainThreadId ?? "No conversations"].join("\t")),
             ...(nextOffset !== null ? [`More bots: bb bots list --offset ${nextOffset} --limit ${options.limit}`] : []),
             `${bots.length} shown; ${all.length} total.`,
             'Message: bb bots message <bot-id> "Your message"',
-          ].join("\n") };
+          ].join("\n"),
+          };
         }
         const [selector, raw] = options.positional as [string, string];
         const message = raw.trim();
