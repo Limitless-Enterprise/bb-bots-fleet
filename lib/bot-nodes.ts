@@ -115,6 +115,11 @@ export function validateBotRegistry(nodes: BotNode[], bots: BotMetadata[]) {
     if (parentId) {
       if (parentId === bot.id) throw new Error("Bot cannot be its own parent");
       if (!byId.has(parentId)) throw new Error(`Parent bot not found: ${parentId}`);
+      let walk: string | null = parentId;
+      while (walk) {
+        if (walk === bot.id) throw new Error("Bot parent chain cannot cycle");
+        walk = byId.get(walk)?.parentBotId ?? null;
+      }
     }
   }
 }

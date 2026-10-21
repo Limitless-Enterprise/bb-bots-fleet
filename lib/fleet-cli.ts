@@ -264,8 +264,21 @@ async function runTree(argv: string[], _ctx: PluginCliContext, store: BotStore) 
   const nodes = store.nodes.list();
   const bots = store.list();
   const apps = nodes.filter((node) => node.kind === "app" && !node.parentNodeId);
-  const selected = filter ? apps.filter((app) => app.name === filter || resolveNodePath(nodes, filter).id === app.id) : apps;
-  if (filter && !selected.length) throw new Error(`App not found: ${filter}`);
+  let selected = apps;
+  if (filter) {
+    const byName = apps.filter((app) => app.name === filter);
+    if (byName.length) selected = byName;
+    else {
+      let filterAppId: string;
+      try {
+        filterAppId = resolveNodePath(nodes, filter).id;
+      } catch {
+        throw new Error(`App not found: ${filter}`);
+      }
+      selected = apps.filter((app) => app.id === filterAppId);
+    }
+    if (!selected.length) throw new Error(`App not found: ${filter}`);
+  }
   const blocks = selected.map((app) => formatAppTree(app, nodes, bots));
   const shared = bots.filter((bot) => !(bot.nodeId ?? null));
   const payload = { apps: blocks, shared: shared.map((bot) => ({ id: bot.id, name: bot.name, address: bot.name })) };
@@ -288,10 +301,12 @@ function formatAppTree(app: BotNode, nodes: BotNode[], bots: BotMetadata[]) {
   }
   for (const schema of schemas) {
     const path = `${app.name}/${schema.name}`;
-    const dataBot = bots.find((bot) => bot.nodeId === schema.id && bot.name === "data");
+    const schemaBots = bots.filter((bot) => bot.nodeId === schema.id);
     if (schema.metadata.foldedInto) lines.push(`    ${path} (folded into ${schema.metadata.foldedInto})`);
-    else if (dataBot) lines.push(`    ${botAddress(nodes, dataBot)}`);
-    else lines.push(`    ${path}/data (missing)`);
+    else {
+      for (const bot of schemaBots) lines.push(`    ${botAddress(nodes, bot)}`);
+      if (!schemaBots.some((bot) => bot.name === "data")) lines.push(`    ${path}/data (missing)`);
+    }
   }
   return { app: app.name, lines };
 }
