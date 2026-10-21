@@ -45,14 +45,14 @@ function file(dialog: HTMLElement, name: "SOUL.md" | "MEMORY.md" | "settings.jso
 
 it("puts the three active logical files in Edit bot with one Save and no separate state action", async () => {
   const { slot, dialog, onNavigate } = await mount();
-  expect(within(dialog).getAllByRole("tab").map(tab => tab.textContent)).toEqual(["Bot", "Context", "Projects · 1"]);
+  expect(within(dialog).getAllByRole("tab").map(tab => tab.textContent)).toEqual(["Bot", "Context", "Memory", "Projects · 1"]);
   expect(file(dialog, "SOUL.md").value).toBe("Fresh private identity");
   expect(file(dialog, "MEMORY.md").value).toBe("- A private fact.\n");
   expect(JSON.parse(file(dialog, "settings.json").value)).toEqual({ style: "concise" });
   expect(dialog.querySelectorAll("textarea")).toHaveLength(1);
   expect(within(dialog).queryByRole("button", { name: "Save file" })).toBeNull();
   expect(within(dialog).getByRole("button", { name: "Save bot" }).closest('[role="tabpanel"]')).toBeNull();
-  expect(slot.inspection.rpcCalls.every(call => ["bots_list", "bot_prepare"].includes(call.method))).toBe(true);
+  expect(slot.inspection.rpcCalls.every(call => ["bots_list", "bot_prepare"].includes(call.method) || call.method.startsWith("bot_memory_"))).toBe(true);
   expect(onNavigate).not.toHaveBeenCalled(); expect(slot.inspection.navigateCalls).toEqual([]);
   expect(dialog.textContent).not.toMatch(/\/home\/|Home folder|Unrelated checkout/);
 });

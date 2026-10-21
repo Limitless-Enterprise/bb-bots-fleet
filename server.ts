@@ -8,6 +8,8 @@ import { memoryFacts, mutateStateDocument } from "./lib/state-actions";
 import { createLegacyImporter } from "./lib/migrate-bots";
 import { browseProjectDirectory, createWorkProject } from "./lib/project-creation";
 import { registerBotsCli } from "./lib/bots-cli";
+import { createBotMemory } from "./lib/bot-memory";
+import { botMemoryToolSchema } from "./lib/bot-memory-tool";
 import { registerBotMentions } from "./lib/bot-mentions";
 import { listBotConversations } from "./lib/bot-conversations";
 import { botProjectContext } from "./lib/project-context";
@@ -61,6 +63,7 @@ export default async function plugin(bb: BbPluginApi) {
   async function validateConversationProject(bot: BotMetadata, projectId: string) {
     if (projectId !== await personalProjectId() && !bot.linkedProjectIds.includes(projectId)) throw new Error("Choose a projectless conversation or link this project to the bot first");
   }
+  const memory = createBotMemory(bb, store, publish);
   const ops = createBotOps({ bb, store, state, publish, serial, importLegacy, personalProjectId, validateLinks, validateSection, validateConversationProject });
   const { resolveOwner, saveBotIdentity, updateProjectRole, createBot, createSection, startConversation } = ops;
   type RoutingThread = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;
@@ -158,7 +161,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.agents.configure((ctx) => {
     const botId = contextOwner(ctx);
     const bot = botId ? store.get(botId) : null;
-    return bot ? { tools: ["bot_read_state", "bot_update_state"], skills: ["bots-fleet"], instructions: botInstructions(bot, botProjectContext(bot, ctx.project, store)) } : { tools: [], skills: [] };
+    return bot ? { tools: ["bot_read_state", "bot_update_state", "bot_memory"], skills: ["bots-fleet"], instructions: botInstructions(bot, botProjectContext(bot, ctx.project, store)) } : { tools: [], skills: [] };
   });
   bb.agents.registerTool({
     name: "bot_read_state", description: "Read this bot's embedded identity and revision, memory facts, settings, or linked/available projects. Supply only target: identity, memory, settings, or project. State is managed privately by BB and is independent of the current machine or working directory.",
@@ -168,6 +171,21 @@ export default async function plugin(bb: BbPluginApi) {
       const botId = await resolveOwner(ctx.threadId);
       if (!botId) throw new Error("This conversation is not assigned to a bot");
       return JSON.stringify(await readBotState(botId, input, ctx.projectId));
+    },
+  });
+  bb.agents.registerTool({
+    name: "bot_memory", description: "Private structured memory for the bound bot only.",
+    parameters: botMemoryToolSchema,
+    execute: async (input, ctx) => {
+      const botId = await resolveOwner(ctx.threadId);
+      if (!botId) throw new Error("This conversation is not assigned to a bot");
+      const parsed = botMemoryToolSchema.parse(input);
+      if (parsed.action === "list") return JSON.stringify({ entries: memory.listIndex(botId, parsed.kind, parsed.limit ?? 50) });
+      if (parsed.action === "read") return JSON.stringify(memory.readEntry(botId, parsed.id));
+      if (parsed.action === "search") return JSON.stringify({ entries: memory.search(botId, parsed.query, parsed.limit ?? 20) });
+      if (parsed.action === "write") return JSON.stringify(memory.writeEntry(botId, { id: parsed.id, title: parsed.title, kind: parsed.kind, importance: parsed.importance, body: parsed.body, reviewBy: parsed.reviewBy ?? null, expectedSha256: parsed.expectedSha256 }, "bot"));
+      if (parsed.action === "forget") return JSON.stringify(memory.forgetEntry(botId, parsed.id, parsed.expectedSha256, "bot"));
+      throw new Error("Unsupported action");
     },
   });
   bb.agents.registerTool({
@@ -195,7 +213,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
   bb.events.on("thread.created", async ({ thread }) => { await routeNewThread(thread, true); });
 
-  registerBotsCli(bb, store, resolveOwner);
+  registerBotsCli(bb, store, memory, resolveOwner);
   registerBotMentions(bb, store);
 
   bb.rpc.register(rpcContract, {
@@ -311,5 +329,10 @@ export default async function plugin(bb: BbPluginApi) {
     state_read: ({ botId, file }) => serial(botId, async () => state.read(await state.prepare(botId), file)),
     state_update: ({ botId, file, content, expectedSha256 }) => serial(botId, async () => { await state.prepare(botId); return state.update(botId, file, content, expectedSha256); }),
     state_apply: ({ botId, change }) => applyBotState(botId, change),
+    bot_memory_list: ({ botId, kind, limit }) => serial(botId, async () => ({ entries: memory.listIndex(botId, kind, limit ?? 50) })),
+    bot_memory_read: ({ botId, entryId }) => serial(botId, async () => ({ entry: memory.readEntry(botId, entryId), history: memory.readHistory(entryId) })),
+    bot_memory_write: (input) => serial(input.botId, async () => memory.writeEntry(input.botId, { id: input.entryId, title: input.title, kind: input.kind, importance: input.importance, body: input.body, reviewBy: input.reviewBy ?? null, expectedSha256: input.expectedSha256 }, "operator")),
+    bot_memory_forget: ({ botId, entryId, expectedSha256 }) => serial(botId, async () => memory.forgetEntry(botId, entryId, expectedSha256, "operator")),
+    bot_memory_stats: ({ botId }) => memory.stats(botId),
   });
 }

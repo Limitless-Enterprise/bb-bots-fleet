@@ -12,6 +12,28 @@ export function createBotStore(bb: BbPluginApi) {
     "CREATE TABLE bot_project_owners (project_id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, assigned_at INTEGER NOT NULL)",
     "CREATE INDEX bot_project_owners_by_bot ON bot_project_owners(bot_id)",
     "ALTER TABLE bot_starts ADD COLUMN project_id TEXT",
+    `CREATE TABLE bot_memory_entries (
+      id TEXT PRIMARY KEY,
+      bot_id TEXT NOT NULL REFERENCES bots(id),
+      title TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      importance INTEGER NOT NULL,
+      body TEXT NOT NULL,
+      review_by TEXT,
+      sha256 TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      deleted_at INTEGER
+    )`,
+    `CREATE TABLE bot_memory_history (
+      entry_id TEXT NOT NULL,
+      revision INTEGER NOT NULL,
+      body TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      at INTEGER NOT NULL,
+      PRIMARY KEY (entry_id, revision)
+    )`,
+    "CREATE INDEX bot_memory_by_bot ON bot_memory_entries(bot_id, deleted_at)",
   ]);
   const legacySchema = metadataSchema.omit({ stateReady: true, legacyHomeProjectId: true }).extend({ homePath: z.string(), homeProjectId: z.string().nullable() }).strict();
   const raw = (id: string) => db.prepare("SELECT data FROM bots WHERE id = ?").get(id) as { data: string } | undefined;

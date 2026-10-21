@@ -5,6 +5,7 @@ import { newThreadRequestSchema } from "./lib/new-thread-request";
 import { launchPresetSchema } from "./lib/launch-preset";
 
 import { MEMORY_MAX_CHARS, MEMORY_LIMIT_ERROR } from "./lib/memory-limit";
+import { botMemoryKindSchema } from "./lib/bot-memory-kinds";
 
 const id = z.string().min(1);
 export const avatarSchema = z.object({
@@ -86,6 +87,16 @@ export const stateMutationToolSchema = z.object({
 });
 export const stateMutationResultSchema = z.object({ botId: id, target: stateTargetSchema, changed: z.boolean(), revision: z.number(), state: z.json() }).strict();
 
+const memoryIndexLineSchema = z.object({
+  id, title: z.string(), kind: botMemoryKindSchema, importance: z.number().int(), hook: z.string(), reviewBy: z.string().nullable(), updatedAt: z.number(),
+}).strict();
+const memoryEntrySchema = z.object({
+  id, title: z.string(), kind: botMemoryKindSchema, importance: z.number().int().min(0).max(100), body: z.string(),
+  reviewBy: z.string().nullable(), sha256: z.string().regex(/^[a-f0-9]{64}$/), createdAt: z.number(), updatedAt: z.number(),
+}).strict();
+const memoryHistorySchema = z.object({ revision: z.number().int(), body: z.string(), actor: z.string(), at: z.number() }).strict();
+const memoryStatsSchema = z.object({ entries: z.number().int().nonnegative(), bytes: z.number().int().nonnegative() }).strict();
+
 export const rpcContract = defineRpcContract({
   bots_list: { input: z.null(), output: z.object({ bots: z.array(metadataSchema), hosts: z.array(hostSchema), sections: z.array(sectionSchema), projects: z.array(projectSchema), threadBindings: z.array(z.object({ threadId: id, botId: id }).strict()), warnings: z.array(z.string()), personalProjectId: id, projectOwners: z.array(projectOwnerSchema).optional() }).strict() },
   project_browse: { input: projectBrowseInputSchema, output: projectBrowseOutputSchema },
@@ -107,4 +118,12 @@ export const rpcContract = defineRpcContract({
   state_read: { input: z.object({ botId: id, file: stateFileSchema }).strict(), output: stateOutput },
   state_update: { input: stateUpdateSchema.safeExtend({ botId: id }), output: stateOutput },
   state_apply: { input: z.object({ botId: id, change: stateMutationSchema }).strict(), output: stateMutationResultSchema },
+  bot_memory_list: { input: z.object({ botId: id, kind: botMemoryKindSchema.optional(), limit: z.number().int().min(1).max(100).optional() }).strict(), output: z.object({ entries: z.array(memoryIndexLineSchema) }).strict() },
+  bot_memory_read: { input: z.object({ botId: id, entryId: id }).strict(), output: z.object({ entry: memoryEntrySchema, history: z.array(memoryHistorySchema) }).strict() },
+  bot_memory_write: { input: z.object({
+    botId: id, entryId: id.optional(), title: z.string().min(1).max(200), kind: botMemoryKindSchema, importance: z.number().int().min(0).max(100),
+    body: z.string().min(1).max(4000), reviewBy: z.string().max(32).nullable().optional(), expectedSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  }).strict(), output: memoryEntrySchema },
+  bot_memory_forget: { input: z.object({ botId: id, entryId: id, expectedSha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(), output: z.object({ id, forgotten: z.literal(true) }).strict() },
+  bot_memory_stats: { input: z.object({ botId: id }).strict(), output: memoryStatsSchema },
 });
