@@ -145,7 +145,8 @@ async function runShow(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, s
   const owned = store.ownedProjects(bot.id);
   const parent = parentBotLabel(store, bot);
   const section = bot.sectionId ? store.sections().find((entry) => entry.id === bot.sectionId)?.name ?? null : null;
-  const { activity } = await listBotCliActivity(bb, store, resolveOwner, ctx);
+  const { activity, firstThreads } = await listBotCliActivity(bb, store, resolveOwner, ctx);
+  const mainThreadId = firstThreads.get(bot.id) ?? null;
   const payload = {
     id: bot.id,
     name: botAddress(nodes, bot),
@@ -157,7 +158,7 @@ async function runShow(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, s
     memory: { chars: bot.memory.length, max: 3000 },
     launchPreset: bot.launchPreset ?? null,
     projects: bot.linkedProjectIds.map((id) => ({ id, name: projects.get(id) ?? "Unavailable project", role: owned.includes(id) ? "owner" as const : "member" as const })),
-    main: bot.mainThreadId ? { threadId: bot.mainThreadId, projectId: null, archived: false } : null,
+    main: mainThreadId ? { threadId: mainThreadId, projectId: null, archived: false } : null,
     status: activity.get(bot.id) ?? "idle",
     nodePath: nodeDisplayPath(nodes, bot.nodeId ?? null),
     parentBotId: bot.parentBotId ?? null,
@@ -211,15 +212,16 @@ async function runCreate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi,
 async function runUpdate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps) {
   const { flags, positional, json } = parseFlags(argv, new Set(["--name", "--role", "--soul", "--soul-file", "--machine", "--parent", "--no-parent", "--section", "--no-section", "--json"]), 1);
   const bot = resolveBotSelector(store, positional[0]!);
+  const hasUpdateFlag = Boolean(
+    flags.name || flags.role || flags.soul || flags["soul-file"] || flags.machine ||
+    flags.parent || flags["no-parent"] || flags.section || flags["no-section"],
+  );
   const patch: Partial<{ name: string; role: string; soul: string; hostId: string; sectionId: string | null; parentBotId: string | null }> = {};
   if (flags.name) patch.name = String(flags.name);
   if (flags.role) patch.role = String(flags.role);
   if (flags.soul || flags["soul-file"]) {
     const soul = readSoul(flags, ctx.cwd ?? "/");
-    if (sha256(soul) === sha256(bot.soul)) {
-      return { exitCode: 0, stdout: json ? JSON.stringify({ bot, unchanged: true }) : "unchanged" };
-    }
-    patch.soul = soul;
+    if (sha256(soul) !== sha256(bot.soul)) patch.soul = soul;
   }
   if (flags.machine) patch.hostId = await machineId(bb, String(flags.machine));
   if (flags["no-parent"]) patch.parentBotId = null;
@@ -230,7 +232,10 @@ async function runUpdate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi,
     if (!section) throw new Error(`Section not found: ${flags.section}`);
     patch.sectionId = section.id;
   }
-  if (!Object.keys(patch).length) throw new Error("Provide at least one field to update");
+  if (!Object.keys(patch).length) {
+    if (!hasUpdateFlag) throw new Error("Provide at least one field to update");
+    return { exitCode: 0, stdout: json ? JSON.stringify({ bot, unchanged: true }) : "unchanged" };
+  }
   const updated = await ops.updateBot(bot.id, patch);
   const out = { bot: updated, address: botAddress(store.nodes.list(), updated) };
   return { exitCode: 0, stdout: json ? JSON.stringify(out) : `Updated ${out.address}` };

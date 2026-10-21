@@ -1,7 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { BotMetadata } from "../contract";
 import type { BotStore } from "./bot-store";
-import { nodeDisplayPath, type BotNode } from "./bot-nodes";
+import { nodeDisplayPath, resolveNodePath, type BotNode } from "./bot-nodes";
 
 export function botAddress(nodes: BotNode[], bot: BotMetadata): string {
   const path = nodeDisplayPath(nodes, bot.nodeId ?? null);
@@ -19,7 +19,7 @@ export function resolveBotSelector(store: BotStore, selector: string): BotMetada
     const name = selector.slice(slash + 1);
     if (!name) throw new Error(`Invalid bot address: ${selector}`);
     const node = store.nodes.list();
-    const resolved = resolveNodeByPath(node, nodePath);
+    const resolved = resolveNodePath(node, nodePath);
     const match = bots.find((bot) => (bot.nodeId ?? null) === resolved.id && bot.name === name);
     if (!match) throw new Error(`Bot not found: ${selector}`);
     return match;
@@ -36,19 +36,6 @@ export function resolveBotSelector(store: BotStore, selector: string): BotMetada
   }
   if (partial.length === 1) return partial[0]!;
   throw new Error("Bot not found. Use bb bots list for ids and addresses.");
-}
-
-function resolveNodeByPath(nodes: BotNode[], path: string): BotNode {
-  const parts = path.split("/").filter(Boolean);
-  let parentId: string | null = null;
-  let current: BotNode | null = null;
-  for (const name of parts) {
-    current = nodes.find((node) => node.parentNodeId === parentId && node.name === name) ?? null;
-    if (!current) throw new Error(`Node not found: ${path}`);
-    parentId = current.id;
-  }
-  if (!current) throw new Error(`Node not found: ${path}`);
-  return current;
 }
 
 export async function resolveProject(bb: BbPluginApi, selector: string) {

@@ -103,6 +103,7 @@ export function nodeDisplayPath(nodes: BotNode[], nodeId: string | null | undefi
 
 export function validateBotRegistry(nodes: BotNode[], bots: BotMetadata[]) {
   const appNames = new Set(nodes.filter((node) => node.kind === "app" && !node.parentNodeId).map((node) => node.name));
+  const byId = new Map(bots.map((bot) => [bot.id, bot]));
   const keyed = new Map<string, BotMetadata>();
   for (const bot of bots) {
     const nodeId = bot.nodeId ?? null;
@@ -110,6 +111,11 @@ export function validateBotRegistry(nodes: BotNode[], bots: BotMetadata[]) {
     if (keyed.has(key)) throw new Error(`Duplicate bot address: ${bot.name}`);
     keyed.set(key, bot);
     if (!nodeId && appNames.has(bot.name)) throw new Error(`Shared bot name collides with app node: ${bot.name}`);
+    const parentId = bot.parentBotId ?? null;
+    if (parentId) {
+      if (parentId === bot.id) throw new Error("Bot cannot be its own parent");
+      if (!byId.has(parentId)) throw new Error(`Parent bot not found: ${parentId}`);
+    }
   }
 }
 
