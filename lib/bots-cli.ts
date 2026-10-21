@@ -6,8 +6,8 @@ import { runBotsMemoryCommand } from "./bots-memory-cli";
 import type { FleetOps } from "./fleet-cli";
 import { FLEET_COMMANDS, listRowExtras, runFleetCommand } from "./fleet-cli";
 import { resolveBotSelector } from "./fleet-resolve";
+import { listBotCliActivity } from "./bot-cli-activity";
 import { listBotConversations } from "./bot-conversations";
-import { conversationRoots, orderConversations } from "./conversation-order";
 
 const USAGE = `bb bots list [--json] [--limit 1-100] [--offset N]
 bb bots show <bot-id-or-exact-name> [--json]
@@ -98,7 +98,7 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
         const fleet = new Set(FLEET_COMMANDS.map((command) => command.name));
         if (fleet.has(argv[0] as typeof FLEET_COMMANDS[number]["name"])) {
           if (!ops) throw new Error("Fleet CLI is unavailable");
-          return await runFleetCommand(argv[0]!, argv.slice(1), ctx, bb, store, ops);
+          return await runFleetCommand(argv[0]!, argv.slice(1), ctx, bb, store, ops, resolveOwner);
         }
         const options = parse(argv);
         if (!options) return { exitCode: 0, stdout: USAGE };
@@ -109,7 +109,7 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
         }
         if (options.command === "list") {
           const all = store.list();
-          const { activity, firstThreads } = await listActivity(ctx);
+          const { activity, firstThreads } = await listBotCliActivity(bb, store, resolveOwner, ctx);
           const projects = new Map((await bb.sdk.projects.list()).map(project => [project.id, project.name]));
           const bots = all.slice(options.offset, options.offset + options.limit).map((bot) => {
             const owned = new Set(store.ownedProjects(bot.id));
@@ -158,46 +158,6 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
       } catch (error) { return { exitCode: 1, stderr: error instanceof Error ? error.message : String(error) }; }
     },
   });
-  async function listActivity(ctx: PluginCliContext) {
-    type Status = "idle" | "working" | "waiting" | "error";
-    const rank = { idle: 0, error: 1, working: 2, waiting: 3 };
-    const result = new Map<string, Status>();
-    const threads: Awaited<ReturnType<typeof bb.sdk.threads.list>> = [];
-    for (let offset = 0; ; offset += 100) {
-      ctx.signal?.throwIfAborted();
-      const page = await bb.sdk.threads.list({ archived: false, includeHidden: true, offset, limit: 100, signal: ctx.signal });
-      threads.push(...page);
-      if (page.length < 100) break;
-    }
-    const byId = new Map(threads.map(thread => [thread.id, thread]));
-    const direct = new Map(store.bindings().map(binding => [binding.threadId, binding.botId]));
-    const botRows = new Map<string, typeof threads>();
-    for (const thread of threads) {
-      if (thread.archivedAt || thread.deletedAt) continue;
-      let id: string | null = thread.id;
-      let owner: string | undefined;
-      const visited = new Set<string>();
-      while (id && !visited.has(id)) {
-        visited.add(id);
-        owner = direct.get(id);
-        if (owner) break;
-        const ancestor = byId.get(id);
-        if (!ancestor) { owner = await resolveOwner(id, false) ?? undefined; break; }
-        id = ancestor.parentThreadId ?? ancestor.sourceThreadId;
-      }
-      if (!owner) continue;
-      if (thread.visibility !== "hidden") {
-        const rows = botRows.get(owner) ?? []; rows.push(thread); botRows.set(owner, rows);
-      }
-      const runtime = thread.runtime.displayStatus;
-      const status: Status = thread.hasPendingInteraction || runtime === "waiting-for-host" ? "waiting"
-        : ["active", "pending", "provisioning", "starting", "stopping"].includes(runtime) || Object.values(thread.activity ?? {}).some(count => count > 0) ? "working"
-        : runtime === "error" || thread.queuedWork === "failed" ? "error" : "idle";
-      if (rank[status] > rank[result.get(owner) ?? "idle"]) result.set(owner, status);
-    }
-    const firstThreads = new Map(store.list().map(bot => [bot.id, conversationRoots(orderConversations(botRows.get(bot.id) ?? [], bot.threadOrder))[0]?.id]));
-    return { activity: result, firstThreads };
-  }
   async function resolveSender(ctx: PluginCliContext): Promise<Sender> {
     if (!ctx.threadId) return null;
     // Verify the invoking conversation exists; never accept a caller-supplied bot name.

@@ -112,6 +112,32 @@ export function createBotOps(deps: BotOpsDeps) {
     });
   }
 
+  async function updateBot(botId: string, patch: Partial<{ name: string; role: string; soul: string; hostId: string; sectionId: string | null; parentBotId: string | null }>) {
+    return serial("registry", () => serial(botId, async () => {
+      const bot = await state.prepare(botId);
+      if (patch.hostId !== undefined && patch.hostId !== bot.hostId && !(await bb.sdk.hosts.list()).some((host) => host.id === patch.hostId)) throw new Error("Choose an enrolled execution machine");
+      validateSection(patch.sectionId !== undefined ? patch.sectionId : bot.sectionId);
+      const next = store.mutateWithProjects(botId, (current) => {
+        const soul = patch.soul ?? current.soul;
+        const soulChanged = patch.soul !== undefined && sha256(patch.soul) !== sha256(current.soul);
+        return {
+          ...current,
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.role !== undefined ? { role: patch.role } : {}),
+          ...(patch.hostId !== undefined ? { hostId: patch.hostId } : {}),
+          ...(patch.sectionId !== undefined ? { sectionId: patch.sectionId } : {}),
+          ...(patch.parentBotId !== undefined ? { parentBotId: patch.parentBotId } : {}),
+          ...(patch.soul !== undefined ? { soul: patch.soul } : {}),
+          stateHashes: soulChanged ? { ...current.stateHashes, "SOUL.md": sha256(soul) } : current.stateHashes,
+          updatedAt: nextTimestamp(current.updatedAt),
+        };
+      });
+      await state.mirror(next);
+      publish();
+      return next;
+    }));
+  }
+
   async function startConversation({ botId, request, makeMain }: z.infer<typeof rpcContract.conversation_create.input>) {
     if (request.projectId !== await personalProjectId()) await updateProjectRole(botId, "join", request.projectId);
     return serial(botId, async () => {
@@ -125,5 +151,5 @@ export function createBotOps(deps: BotOpsDeps) {
     });
   }
 
-  return { resolveOwner, saveBotIdentity, updateProjectRole, createBot, createSection, startConversation };
+  return { resolveOwner, saveBotIdentity, updateBot, updateProjectRole, createBot, createSection, startConversation };
 }

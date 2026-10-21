@@ -6,8 +6,8 @@ import { avatarSchema } from "../contract";
 import type { BotStore } from "./bot-store";
 import type { createBotOps } from "./bot-ops";
 import { newNodeId, nodePathSegments, nodeDisplayPath, resolveNodePath, type BotNode, type BotNodeMetadata } from "./bot-nodes";
+import { listBotCliActivity } from "./bot-cli-activity";
 import { botAddress, parentBotLabel, resolveBotSelector, resolveMachine, resolveProject } from "./fleet-resolve";
-import { nextTimestamp } from "./bot-store";
 
 const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
 const printable = (value: string) => value.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
@@ -66,10 +66,10 @@ async function machineId(bb: BbPluginApi, selector: string) {
   return (await resolveMachine(bb, selector)).id;
 }
 
-export async function runFleetCommand(command: string, argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps): Promise<{ exitCode: number; stdout?: string; stderr?: string }> {
+export async function runFleetCommand(command: string, argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>): Promise<{ exitCode: number; stdout?: string; stderr?: string }> {
   try {
     if (command === "node") return await runNode(argv, ctx, bb, store);
-    if (command === "show") return await runShow(argv, ctx, bb, store);
+    if (command === "show") return await runShow(argv, ctx, bb, store, resolveOwner);
     if (command === "create") return await runCreate(argv, ctx, bb, store, ops);
     if (command === "update") return await runUpdate(argv, ctx, bb, store, ops);
     if (command === "link") return await runLink(argv, ctx, bb, store, ops, "link");
@@ -135,7 +135,7 @@ async function runNode(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, s
   throw new Error(`Unknown node command: ${sub}`);
 }
 
-async function runShow(argv: string[], _ctx: PluginCliContext, bb: BbPluginApi, store: BotStore) {
+async function runShow(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>) {
   const { flags, positional, json } = parseFlags(argv, new Set(["--json"]), 1);
   const bot = resolveBotSelector(store, positional[0]!);
   const nodes = store.nodes.list();
@@ -145,6 +145,7 @@ async function runShow(argv: string[], _ctx: PluginCliContext, bb: BbPluginApi, 
   const owned = store.ownedProjects(bot.id);
   const parent = parentBotLabel(store, bot);
   const section = bot.sectionId ? store.sections().find((entry) => entry.id === bot.sectionId)?.name ?? null : null;
+  const { activity } = await listBotCliActivity(bb, store, resolveOwner, ctx);
   const payload = {
     id: bot.id,
     name: botAddress(nodes, bot),
@@ -157,7 +158,7 @@ async function runShow(argv: string[], _ctx: PluginCliContext, bb: BbPluginApi, 
     launchPreset: bot.launchPreset ?? null,
     projects: bot.linkedProjectIds.map((id) => ({ id, name: projects.get(id) ?? "Unavailable project", role: owned.includes(id) ? "owner" as const : "member" as const })),
     main: bot.mainThreadId ? { threadId: bot.mainThreadId, projectId: null, archived: false } : null,
-    status: "idle" as const,
+    status: activity.get(bot.id) ?? "idle",
     nodePath: nodeDisplayPath(nodes, bot.nodeId ?? null),
     parentBotId: bot.parentBotId ?? null,
     parentName: parent?.name ?? null,
@@ -174,7 +175,7 @@ async function runShow(argv: string[], _ctx: PluginCliContext, bb: BbPluginApi, 
 }
 
 async function runCreate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps) {
-  const { flags, json } = parseFlags(argv, new Set(["--name", "--role", "--machine", "--soul", "--soul-file", "--node", "--create-node", "--parent", "--project", "--as", "--section", "--create-section", "--json"]), "rest");
+  const { flags, json } = parseFlags(argv, new Set(["--name", "--role", "--machine", "--soul", "--soul-file", "--node", "--parent", "--project", "--as", "--section", "--json"]), "rest");
   const name = String(flags.name ?? "");
   const role = String(flags.role ?? "");
   if (!name || !role) throw new Error("--name and --role are required");
@@ -182,17 +183,7 @@ async function runCreate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi,
   const hostId = await machineId(bb, String(flags.machine ?? ""));
   let nodeId: string | null = null;
   if (flags.node) {
-    const nodes = store.nodes.list();
-    try {
-      nodeId = resolveNodePath(nodes, String(flags.node)).id;
-    } catch {
-      if (!flags["create-node"]) throw new Error(`Node not found: ${flags.node}`);
-      const parts = nodePathSegments(String(flags.node));
-      if (parts.length !== 1) throw new Error("Only app nodes can be created with --create-node");
-      const created: BotNode = { id: newNodeId(), kind: "app", name: parts[0]!, parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: Date.now() };
-      store.nodes.save(created);
-      nodeId = created.id;
-    }
+    nodeId = resolveNodePath(store.nodes.list(), String(flags.node)).id;
   }
   let parentBotId: string | null = null;
   if (flags.parent) parentBotId = resolveBotSelector(store, String(flags.parent)).id;
@@ -209,9 +200,8 @@ async function runCreate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi,
   if (flags.section) {
     const name = String(flags.section);
     const existing = store.sections().find((section) => section.name === name);
-    if (existing) sectionId = existing.id;
-    else if (flags["create-section"]) sectionId = (await ops.createSection(name)).id;
-    else throw new Error(`Section not found: ${name}`);
+    if (!existing) throw new Error(`Section not found: ${name}`);
+    sectionId = existing.id;
   }
   const created = await ops.createBot({ name, role, hostId, avatar: defaultAvatar(), sectionId, linkedProjectIds, ownedProjectIds, soul, nodeId, parentBotId });
   const out = { bot: created, address: botAddress(store.nodes.list(), created) };
@@ -221,27 +211,27 @@ async function runCreate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi,
 async function runUpdate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps) {
   const { flags, positional, json } = parseFlags(argv, new Set(["--name", "--role", "--soul", "--soul-file", "--machine", "--parent", "--no-parent", "--section", "--no-section", "--json"]), 1);
   const bot = resolveBotSelector(store, positional[0]!);
-  const fields: Partial<BotMetadata> = {};
-  if (flags.name) fields.name = String(flags.name);
-  if (flags.role) fields.role = String(flags.role);
+  const patch: Partial<{ name: string; role: string; soul: string; hostId: string; sectionId: string | null; parentBotId: string | null }> = {};
+  if (flags.name) patch.name = String(flags.name);
+  if (flags.role) patch.role = String(flags.role);
   if (flags.soul || flags["soul-file"]) {
     const soul = readSoul(flags, ctx.cwd ?? "/");
     if (sha256(soul) === sha256(bot.soul)) {
       return { exitCode: 0, stdout: json ? JSON.stringify({ bot, unchanged: true }) : "unchanged" };
     }
-    fields.soul = soul;
+    patch.soul = soul;
   }
-  if (flags.machine) fields.hostId = await machineId(bb, String(flags.machine));
-  if (flags["no-parent"]) fields.parentBotId = null;
-  else if (flags.parent) fields.parentBotId = resolveBotSelector(store, String(flags.parent)).id;
-  if (flags["no-section"]) fields.sectionId = null;
+  if (flags.machine) patch.hostId = await machineId(bb, String(flags.machine));
+  if (flags["no-parent"]) patch.parentBotId = null;
+  else if (flags.parent) patch.parentBotId = resolveBotSelector(store, String(flags.parent)).id;
+  if (flags["no-section"]) patch.sectionId = null;
   else if (flags.section) {
     const section = store.sections().find((entry) => entry.name === String(flags.section));
     if (!section) throw new Error(`Section not found: ${flags.section}`);
-    fields.sectionId = section.id;
+    patch.sectionId = section.id;
   }
-  if (!Object.keys(fields).length) throw new Error("Provide at least one field to update");
-  const updated = store.mutate(bot.id, (current) => ({ ...current, ...fields, updatedAt: nextTimestamp(current.updatedAt), ...(fields.soul ? { stateHashes: { ...current.stateHashes, "SOUL.md": sha256(fields.soul!) } } : {}) }));
+  if (!Object.keys(patch).length) throw new Error("Provide at least one field to update");
+  const updated = await ops.updateBot(bot.id, patch);
   const out = { bot: updated, address: botAddress(store.nodes.list(), updated) };
   return { exitCode: 0, stdout: json ? JSON.stringify(out) : `Updated ${out.address}` };
 }
@@ -281,11 +271,11 @@ async function runTree(argv: string[], _ctx: PluginCliContext, store: BotStore) 
 
 function formatAppTree(app: BotNode, nodes: BotNode[], bots: BotMetadata[]) {
   const appBots = bots.filter((bot) => (bot.nodeId ?? null) === app.id);
-  const lead = appBots.find((bot) => !(bot.parentBotId ?? null)) ?? null;
+  const roots = appBots.filter((bot) => !(bot.parentBotId ?? null));
   const members = appBots.filter((bot) => bot.parentBotId);
   const schemas = nodes.filter((node) => node.parentNodeId === app.id && node.kind === "schema");
   const lines = [`${app.name}${app.projectId ? ` (project ${app.projectId})` : ""}`];
-  if (lead) lines.push(`  ${botAddress(nodes, lead)}`);
+  for (const root of roots) lines.push(`  ${botAddress(nodes, root)}`);
   for (const member of members) {
     const parent = member.parentBotId ? bots.find((bot) => bot.id === member.parentBotId) : null;
     const parentLabel = parent ? botAddress(nodes, parent) : "(missing)";

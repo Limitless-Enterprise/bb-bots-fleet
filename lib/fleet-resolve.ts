@@ -34,6 +34,7 @@ export function resolveBotSelector(store: BotStore, selector: string): BotMetada
   if (partial.length > 1) {
     throw new Error(`Ambiguous bot name "${selector}". Matches: ${partial.map((bot) => botAddress(nodes, bot)).join(", ")}`);
   }
+  if (partial.length === 1) return partial[0]!;
   throw new Error("Bot not found. Use bb bots list for ids and addresses.");
 }
 

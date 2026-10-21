@@ -46,6 +46,7 @@ export function createBotStore(bb: BbPluginApi) {
       created_at INTEGER NOT NULL,
       UNIQUE (parent_node_id, name)
     )`,
+    "CREATE UNIQUE INDEX IF NOT EXISTS bot_nodes_root_name ON bot_nodes(name) WHERE parent_node_id IS NULL",
   ]);
   const nodes = createBotNodeStore(db);
   const legacySchema = metadataSchema.omit({ stateReady: true, legacyHomeProjectId: true }).extend({ homePath: z.string(), homeProjectId: z.string().nullable() }).strict();

@@ -58,6 +58,8 @@ export function createBotNodeStore(db: import("better-sqlite3").Database) {
 
   const save = (node: BotNode) => {
     const value = botNodeSchema.parse(node);
+    const conflict = findByParentAndName(value.parentNodeId, value.name);
+    if (conflict && conflict.id !== value.id) throw new Error(`Node already exists: ${value.name}`);
     db.prepare(
       "INSERT INTO bot_nodes(id, kind, name, parent_node_id, project_id, section_id, metadata, created_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, name=excluded.name, parent_node_id=excluded.parent_node_id, project_id=excluded.project_id, section_id=excluded.section_id, metadata=excluded.metadata",
     ).run(value.id, value.kind, value.name, value.parentNodeId, value.projectId, value.sectionId, JSON.stringify(value.metadata), value.createdAt);
