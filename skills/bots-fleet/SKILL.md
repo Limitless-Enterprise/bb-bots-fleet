@@ -1,11 +1,11 @@
 ---
-name: bots-sidebar
-description: Use Bots Sidebar to find bots, understand their private state and project roles, or send explicitly requested bot messages.
+name: bots-fleet
+description: Use Bots Fleet to find bots, understand their private state and project roles, or send explicitly requested bot messages.
 ---
 
-# Bots Sidebar
+# Bots Fleet
 
-The runtime plugin ID is `bots-sidebar`; its CLI is `bb bots`.
+The runtime plugin ID is `bots-fleet`; its CLI is `bb bots`.
 
 - Read public bot metadata with `bb bots list --json --limit 50 --offset 0`.
   Listing and @ mentions never send messages or expose private state.

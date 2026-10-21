@@ -1,0 +1,32 @@
+name: PR Quality
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pr-quality:
+    name: PR Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # bb plugin build requires the desktop BB AppImage and does not complete
+      # reliably on GitHub-hosted runners; W1a validates build locally (see README).

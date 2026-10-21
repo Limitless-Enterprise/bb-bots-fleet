@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-// Stable client preference keys: intentionally retained after the plugin-ID
-// change to bots-sidebar so existing heights/collapsed state do not reset.
+// Stable client preference keys: intentionally retained across plugin-ID renames
+// (see README § Plugin identity) so existing heights/collapsed state do not reset.
 const HEIGHT_KEY = "bots:chats-height";
 const COLLAPSED_KEY = "bots:chats-collapsed";
 const MIN_HEIGHT = 80;

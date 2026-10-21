@@ -31,7 +31,7 @@ function fixture() {
   let offline = false;
   let beforeRead: ((file: string) => void | Promise<void>) | undefined;
   const base64 = new Set<string>();
-  const host = createFakePluginHost({ pluginId: "bots-sidebar", dataDir: "/not-the-sdk-database-location", sdk: {
+  const host = createFakePluginHost({ pluginId: "bots-fleet", dataDir: "/not-the-sdk-database-location", sdk: {
     files: { read: async ({ hostId, path }) => {
       if (offline) throw new Error("Execution machine offline");
       await beforeRead?.(path);

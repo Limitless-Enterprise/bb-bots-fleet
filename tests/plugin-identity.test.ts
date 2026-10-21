@@ -7,18 +7,18 @@ const instances: Awaited<ReturnType<typeof backend>>[] = [];
 afterEach(async () => { await Promise.all(instances.splice(0).map(host => host.harness.lifecycle.dispose())); });
 async function setup() { const host = await backend(); instances.push(host); return host; }
 
-it("derives the non-conflicting bots-sidebar ID from its package name", () => {
+it("derives the non-conflicting bots-fleet ID from its package name", () => {
   const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-  expect(manifest.name).toBe("bb-plugin-bots-sidebar");
-  expect(manifest.name.replace(/^bb-plugin-/, "")).toBe("bots-sidebar");
-  expect(manifest.bb.name).toBe("Bots Sidebar");
+  expect(manifest.name).toBe("bb-plugin-bots-fleet");
+  expect(manifest.name.replace(/^bb-plugin-/, "")).toBe("bots-fleet");
+  expect(manifest.bb.name).toBe("Bots Fleet");
 });
 
 it("attributes new bot conversations to the new plugin ID before their first turn", async () => {
   const host = await setup(); const bot = await host.create("Atlas");
-  expect(host.bb.pluginId).toBe("bots-sidebar");
+  expect(host.bb.pluginId).toBe("bots-fleet");
   const result = await host.harness.behavior.callRpc("conversation_create", { botId: bot.id, request: request() }) as { threadId: string };
-  expect(host.threads.get(result.threadId)?.originPluginId).toBe("bots-sidebar");
+  expect(host.threads.get(result.threadId)?.originPluginId).toBe("bots-fleet");
   expect(host.store.owner(result.threadId)).toBe(bot.id);
   expect(host.initialConfigurations.at(-1)?.instructions).toContain("You are Atlas.");
 });
