@@ -1,26 +1,31 @@
 import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
 import type { BotMetadata } from "../contract";
 import type { BotStore } from "./bot-store";
+import type { BotMemory } from "./bot-memory";
+import { runBotsMemoryCommand } from "./bots-memory-cli";
 import { listBotConversations } from "./bot-conversations";
 import { conversationRoots, orderConversations } from "./conversation-order";
 
 const USAGE = `bb bots list [--json] [--limit 1-100] [--offset N]
+bb bots show <bot-id-or-exact-name> [--json]
+bb bots memory <bot> list|read <id>|edit <id> --from <file>|export --to <dir>
 bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]
 
 Messages go to the bot's first conversation by default and queue while it is busy.
 --thread targets a conversation belonging to that bot (for replies).
 Sender identity comes from the invoking BB thread; there is no --from override.
 Quote names/messages containing spaces. Use -- before positional values beginning with --.
-List output contains public bot metadata, never private state.`;
+List output contains public bot metadata, never private documents. JSON includes per-bot memory entry/byte counts only (not entry bodies).`;
 const MESSAGE_MAX_CHARS = 12000;
 const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 const printable = (value: string) => value.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
 
-type Options = { command: "list" | "message"; json: boolean; limit: number; offset: number; threadId?: string; positional: string[] };
+type Options = { command: "list" | "message" | "show"; json: boolean; limit: number; offset: number; threadId?: string; positional: string[] };
 function parse(argv: string[]): Options | null {
   if (!argv.length || argv[0] === "--help" || argv[0] === "help") return null;
   const command = argv[0];
-  if (command !== "list" && command !== "message") throw new Error(`Unknown command: ${command}\n${USAGE}`);
+  if (command === "memory") throw new Error("Use: bb bots memory <bot> ...\n" + USAGE);
+  if (command !== "list" && command !== "message" && command !== "show") throw new Error(`Unknown command: ${command}\n${USAGE}`);
   const options: Options = { command, json: false, limit: 50, offset: 0, positional: [] };
   const seen = new Set<string>();
   for (let i = 1; i < argv.length; i++) {
@@ -44,6 +49,7 @@ function parse(argv: string[]): Options | null {
   }
   if (command === "list" && options.positional.length) throw new Error(`Unexpected list arguments\n${USAGE}`);
   if (command === "message" && options.positional.length !== 2) throw new Error(`Supply one bot and one quoted message\n${USAGE}`);
+  if (command === "show" && options.positional.length !== 1) throw new Error(`Supply one bot selector\n${USAGE}`);
   return options;
 }
 
@@ -79,17 +85,23 @@ export function frameBotMessage(sender: Sender, message: string): string {
   ].join("\n");
 }
 
-export function registerBotsCli(bb: BbPluginApi, store: BotStore, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>) {
+export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMemory, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>) {
   bb.cli.register({
     name: "bots", summary: "List bots and send attributed asynchronous messages to their conversations",
     commands: [
-      { name: "list", summary: "List bot IDs, activity, visibility, and owned/joined project names without private state", usage: "bb bots list [--json] [--limit 1-100] [--offset N]" },
+      { name: "list", summary: "List bot IDs, activity, visibility, owned/joined project names, and level-1 memory counts (JSON only; no entry bodies)", usage: "bb bots list [--json] [--limit 1-100] [--offset N]" },
       { name: "message", summary: "Message a bot's first conversation, or reply to one of its conversations; queues while busy", usage: "bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]" },
     ],
     async run(argv, ctx) {
       try {
+        if (argv[0] === "memory") return await runBotsMemoryCommand(argv.slice(1), ctx, store, memory);
         const options = parse(argv);
         if (!options) return { exitCode: 0, stdout: USAGE };
+        if (options.command === "show") {
+          const bot = recipient(store.list(), options.positional[0]!);
+          const stats = memory.stats(bot.id);
+          return { exitCode: 0, stdout: options.json ? JSON.stringify({ id: bot.id, name: bot.name, role: bot.role, memory: stats }) : `${bot.id}\tmemory.entries=${stats.entries}\tmemory.bytes=${stats.bytes}` };
+        }
         if (options.command === "list") {
           const all = store.list();
           const { activity, firstThreads } = await listActivity(ctx);
@@ -102,6 +114,7 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, resolveOwner: 
             linkedProjectCount: bot.linkedProjectIds.length, ownedProjectCount: store.ownedProjects(bot.id).length,
             hidden: bot.hiddenUntilActivity, visibility: bot.hiddenUntilActivity ? "hidden" : "visible",
             status: activity.get(bot.id) ?? "idle",
+            memory: memory.stats(bot.id),
             ownedProjects: [...owned].map(project),
             joinedProjects: bot.linkedProjectIds.filter(id => !owned.has(id)).map(project),
           }); });

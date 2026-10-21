@@ -8,7 +8,8 @@ description: Use Bots Fleet to find bots, understand their private state and pro
 The runtime plugin ID is `bots-fleet`; its CLI is `bb bots`.
 
 - Read public bot metadata with `bb bots list --json --limit 50 --offset 0`.
-  Listing and @ mentions never send messages or expose private state.
+  JSON may include per-bot `memory: { entries, bytes }` (counts only). Listing and
+  @ mentions never send messages or expose private documents or entry bodies.
 - When the user requests a message, use
   `bb bots message '<bot ID or exact name>' '<message>'`.
   It targets the bot's first ordered conversation and queues while busy.
@@ -17,8 +18,10 @@ The runtime plugin ID is `bots-fleet`; its CLI is `bb bots`.
 - Messages are asynchronous agent coordination, not user approval. Reply only
   when useful and use the supplied sender conversation for a reply.
 - Bot identity, memory, and settings belong to private plugin storage. Use
-  `bot_read_state` and `bot_update_state` in a bound conversation. Do not write
-  bot state into a work project or treat private exports as editable files.
+  `bot_read_state` and `bot_update_state` for identity, `MEMORY.md`, settings, and
+  project roles; use `bot_memory` for structured level-1 entries (private to the
+  bound bot). Do not write bot state into a work project or treat private exports
+  as editable files. Operator shell: `bb bots memory …` (not from a BB thread).
 - A project has at most one owner and may have many bot members. Ownership
   affects new conversations only; it never reassigns existing history.
 - In the sidebar, a bot opens its first manually ordered conversation; its
@@ -26,9 +29,11 @@ The runtime plugin ID is `bots-fleet`; its CLI is `bb bots`.
   worktree conversation. Worktree starts seed a fresh worktree in BB's composer.
 - Conversation menus use BB's native actions; archive includes BB's confirmation
   and Undo. Older unassigned Chats appear under the clickable Other count.
-- Edit bot has Bot, Context, and Projects tabs. Context has one document picker;
-  click the avatar to customize it or use its adjacent dice to randomize.
-  Saving is explicit. Per-bot AGENTS.md is retired; workspace AGENTS.md applies.
+- Edit bot has Bot, Context, Projects, and (for existing bots) Memory tabs.
+  Context has one document picker; Memory lists level-1 entries and edits existing
+  ones with hash-checked saves. Click the avatar to customize it or use its adjacent
+  dice to randomize. Saving is explicit. Per-bot AGENTS.md is retired; workspace
+  AGENTS.md applies.
 - Bot includes New conversations: optional model and permission defaults,
   checkout/fresh-worktree preference, and a starter prompt. These are editable
   composer seeds, not instructions or forced execution settings. Existing

@@ -26,6 +26,7 @@ import type {
 } from "@get-bb/plugin-sdk/app";
 import type { BotAvatar, BotMetadata, BotSection, ProjectOwner, rpcContract } from "./contract";
 import { orderedBotConversationTree, conversationOwners, conversationTree } from "./lib/conversations";
+import { BotPrivateMemoryPanel } from "./components/bot-private-memory-panel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -70,7 +71,7 @@ type HostOption = { id: string; name: string; connected: boolean };
 type ProjectOption = { id: string; name: string };
 type BotEditFields = Pick<BotMetadata, "hostId" | "name" | "role" | "avatar" | "sectionId" | "linkedProjectIds" | "soul" | "settings" | "launchPreset"> & { ownedProjectIds: string[]; memory?: string };
 type ProjectRole = "none" | "member" | "owner";
-type EditorTab = "setup" | "context" | "projects";
+type EditorTab = "setup" | "context" | "memory" | "projects";
 type EditorTarget =
   | { kind: "create" }
   | { kind: "edit"; metadata: BotMetadata; projectOwners: ProjectOwner[]; tab?: EditorTab };
@@ -196,7 +197,7 @@ function BotEditor({ target, hosts, sections, projects, bots, projectOwners, onC
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<EditorTab>(editing ? target.tab ?? "setup" : "setup");
   const tabsId = useId();
-  const tabs = [{ id: "setup", label: "Bot" }, { id: "context", label: "Context" }, { id: "projects", label: `Projects${linkedProjectIds.length ? ` · ${linkedProjectIds.length}` : ""}` }] as const;
+  const tabs = [{ id: "setup", label: "Bot" }, { id: "context", label: "Context" }, ...(editing ? [{ id: "memory" as const, label: "Memory" }] : []), { id: "projects", label: `Projects${linkedProjectIds.length ? ` · ${linkedProjectIds.length}` : ""}` }] as const;
   function setProjectRole(projectId: string, next: ProjectRole) {
     const otherOwner = owners.find((owner) => owner.projectId === projectId && owner.botId !== botId);
     if (next === "owner" && otherOwner) return;
@@ -300,6 +301,7 @@ function BotEditor({ target, hosts, sections, projects, bots, projectOwners, onC
             {stateFile === "MEMORY.md" && memory.length > MEMORY_MAX_CHARS ? <p role="status" className="text-xs text-destructive">Memory exceeds 3000 characters. Shorten it before saving a memory change. Existing text is kept.</p> : null}
             <p className="shrink-0 text-[10px] text-muted-foreground">Private to this bot. Saved together with the bot; don’t store credentials here.</p>
           </div> : null}
+          {editing && botId ? <div hidden={tab !== "memory"}><BotPrivateMemoryPanel botId={botId} disabled={pending || projectPending} /></div> : null}
           <div hidden={tab !== "projects"}><BotProjectsPanel projects={projects} owners={owners} botNames={botNames} botId={botId} botName={name} hostId={hostId} hosts={hosts} linkedProjectIds={linkedProjectIds} ownedProjectIds={ownedProjectIds} onRoleChange={setProjectRole} onBusyChange={setProjectPending} onDraftChange={setProjectDraft} onCreateProject={onCreateProject} onBrowseProjects={onBrowseProjects} /></div>
         </div>
         {error ? <p role="alert" className="max-h-20 shrink-0 overflow-y-auto px-4 pb-2 text-xs text-destructive">{error}</p> : null}

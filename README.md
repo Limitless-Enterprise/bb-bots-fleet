@@ -79,12 +79,22 @@ and are not execution workspaces. Agents do not need their physical locations.
 | `MEMORY.md` | Durable facts and preferences; at most 3,000 characters |
 | `settings.json` | Structured bot preferences; a JSON object up to 16,384 characters |
 
-**Edit bot** has three tabs: **Bot**, **Context**, and **Projects**. Context has
-one document picker for SOUL.md, MEMORY.md, and settings.json. Click the avatar
-for appearance controls, or the small dice beside it to randomize its appearance.
-Its explicit Save commits changes
+Structured **level-1 memory** (private SQLite entries keyed by bot ID) is separate
+from `MEMORY.md`. Each live entry has a title, kind, importance, and body (at most
+4,000 characters); a bot may hold at most 300 live entries. Private JSON exports for
+live entries and revision history mirror under `state/<bot-id>/memory/` in the plugin
+data directory. Only the bound bot can read or change its level-1 memory through
+`bot_memory`; other bots and unassigned conversations cannot access it.
+
+**Edit bot** has **Bot**, **Context**, **Projects**, and (for existing bots)
+**Memory** tabs. Context has one document picker for SOUL.md, MEMORY.md, and
+settings.json. **Memory** lists private level-1 entries and lets you load and
+edit an existing entry with hash-checked saves (no create or forget in the UI).
+Click the avatar for appearance controls, or the small dice beside it to
+randomize its appearance. Its explicit Save commits Bot/Context/Projects changes
 together with revision/hash checks; invalid JSON or conflicts never partially save
-other fields. Use this editor or the state tools—not direct edits to exports.
+other fields. Level-1 entry saves use the Memory tab's per-entry Save. Use this
+editor or the state tools—not direct edits to exports.
 Export failures do not lose committed state or prevent conversations.
 The working machine can be offline while state is still readable/editable in BB.
 
@@ -138,7 +148,23 @@ in BB; a bot still needs no project or special working directory.
 ## State tools
 
 - `bot_read_state({ target })` reads identity, memory, settings, or project roles.
-- `bot_update_state({ target, action, ... })` is the durable-write gateway.
+- `bot_update_state({ target, action, ... })` is the durable-write gateway for
+  identity, `MEMORY.md`, settings, and project membership.
+- `bot_memory({ action, ... })` manages private structured level-1 entries for the
+  bound bot only (list, read, search, write, forget).
+
+| `bot_memory` action | Inputs / behavior |
+| --- | --- |
+| `list` | Optional `kind` filter and `limit` (default 50, max 100); returns index lines with id, title, kind, importance, hook, reviewBy, updatedAt |
+| `read` | Entry `id`; returns full entry including body and sha256 |
+| `search` | `query` (substring match on title/body) and optional `limit` (default 20, max 50) |
+| `write` | `title`, `kind` (`fact`, `preference`, `decision`, `procedure`, `episode`, `reference`), `importance` (0–100), `body`; optional `reviewBy`. Omit `id` to create. To update, supply `id` and fresh `expectedSha256` from a read |
+| `forget` | Entry `id` and fresh `expectedSha256` from a read |
+
+Level-1 writes use SQLite transactions with the same per-bot serialization as
+`bot_read_state` / `bot_update_state`. Updates and forgets require a current sha256;
+conflicts ask you to read again. Creating an entry when the bot already has 300 live
+entries fails with a clear limit error.
 
 | Target | Action | Inputs / behavior |
 | --- | --- | --- |
@@ -309,13 +335,31 @@ Bot context states the current project relationship: owner, joined member (with 
 ```sh
 bb bots list
 bb bots list --json --limit 50 --offset 0
+bb bots show <bot-id-or-exact-name> [--json]
+bb bots memory <bot-id-or-exact-name> list [--json]
+bb bots memory <bot> read <entry-id> [--json]
+bb bots memory <bot> edit <entry-id> --from <file>
+bb bots memory <bot> export --to <directory>
 bb bots message <bot-id-or-exact-name> "Please review the changes"
 bb bots message <bot-id> "My reply" --thread <sender-conversation-id>
 ```
 
+`bb bots memory` refuses calls that carry a BB thread context (the CLI derives
+`ctx.threadId` from the caller's environment). On a single machine and OS user
+this is policy-enforced, not isolation: a shell can run
+`env -u BB_THREAD_ID bb bots memory …` and read any bot's level-1 memory. Full
+isolation requires bot conversations on execution machines separate from the BB
+server (ADR 0010 §7; foundation §6.7). `bb bots show` prints level-1 memory
+entry and byte counts for one bot (same counts embedded in `bb bots list --json`
+per bot).
+
 Messages use BB's native queue: idle conversations start a turn, busy conversations receive the message later. The default destination is the recipient's first visible ordered conversation; `--thread` must belong to that bot. Messages identify the invoking conversation and its bound bot, clearly distinguish agent coordination from user instructions, and include an asynchronous reply command. FYI messages need no acknowledgement. Unbound conversations and external CLI callers are labeled accurately. The CLI does not create conversations or change membership, bindings, permissions, or private state.
 
-Listing exposes public bot metadata only and paginates at 100 bots maximum. Names must match exactly; use IDs for duplicate names. Quote messages (maximum 12,000 characters). Delivery receipts confirm acceptance, not task completion or a reply.
+Listing exposes public bot metadata only and paginates at 100 bots maximum.
+`bb bots list --json` also includes per-bot `memory: { entries, bytes }` (live
+entry count and total body bytes, never entry titles or bodies). Names must match
+exactly; use IDs for duplicate names. Quote messages (maximum 12,000 characters).
+Delivery receipts confirm acceptance, not task completion or a reply.
 
 `bb bots list` also shows **STATUS**, **VISIBILITY**, **OWNED PROJECTS**, and
 **JOINED PROJECTS** by name. Joined projects are memberships without ownership;

@@ -26,7 +26,9 @@ describe("bots CLI", () => {
     const data = JSON.parse(result.stdout!);
     expect(data.total).toBe(2); expect(data.nextOffset).toBe(1);
     expect(data.bots).toHaveLength(1);
-    expect(data.bots[0]).not.toHaveProperty("soul"); expect(data.bots[0]).not.toHaveProperty("memory");
+    expect(data.bots[0]).not.toHaveProperty("soul");
+    expect(data.bots[0].memory).toEqual({ entries: 0, bytes: 0 });
+    expect(JSON.stringify(data.bots[0])).not.toMatch(/PRIVATE|SENTINEL/i);
     expect(JSON.parse((await run(["list", "--json", "--offset", "1"])).stdout!).nextOffset).toBeNull();
   });
   it("uses native queue routing and verified sender, with exact asynchronous reply address", async () => {
