@@ -61,6 +61,14 @@ describe("private bot memory", () => {
     expect(show.stdout).not.toContain("Operator export body");
   });
 
+  it("requires expectedSha256 when updating an existing entry", async () => {
+    const { a, ctx, write, host } = await setup();
+    const created = JSON.parse(String(await write(a.id, "Version one")));
+    await expect(host.harness.behavior.callAgentTool("bot_memory", {
+      action: "write", id: created.id, title: "Note", kind: "fact", importance: 50, body: "Stale overwrite",
+    }, ctx(a.id))).rejects.toThrow(/expectedSha256/i);
+  });
+
   it("records history on update and includes history in export", async () => {
     const { host, a, ctx, write, run } = await setup();
     const created = JSON.parse(String(await write(a.id, "Version one")));

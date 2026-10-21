@@ -16,6 +16,8 @@ export const botMemoryToolSchema = z.discriminatedUnion("action", [
     body: z.string().min(1).max(4000),
     reviewBy: z.string().max(32).nullable().optional(),
     expectedSha256: sha.optional(),
-  }).strict(),
+  }).strict().superRefine((value, ctx) => {
+    if (value.id && !value.expectedSha256) ctx.addIssue({ code: "custom", message: "expectedSha256 is required when updating a memory entry (id is set)" });
+  }),
   z.object({ action: z.literal("forget"), id: z.string().min(1), expectedSha256: sha }).strict(),
 ]);

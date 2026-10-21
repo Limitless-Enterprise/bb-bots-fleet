@@ -228,7 +228,8 @@ export function createBotMemory(bb: BbPluginApi, store: BotStore, publish: () =>
     return connection.transaction(() => {
       if (input.id) {
         const current = requireLive(botId, input.id);
-        if (input.expectedSha256 && current.sha256 !== input.expectedSha256) throw new BotStateConflictError("Memory entry changed. Read it again and retry with its sha256.");
+        if (!input.expectedSha256) throw new Error("expectedSha256 is required when updating a memory entry");
+        if (current.sha256 !== input.expectedSha256) throw new BotStateConflictError("Memory entry changed. Read it again and retry with its sha256.");
         const nextBody = input.body;
         const nextSha = hash(nextBody);
         if (current.title === input.title && current.kind === input.kind && current.importance === input.importance && current.body === nextBody && current.review_by === input.reviewBy) {

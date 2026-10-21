@@ -30,6 +30,7 @@ async function mount({ update, prepareFailures = 0, expectFailure = false }: { u
         current = { ...current, name: input.name, role: input.role, avatar: input.avatar, soul: input.soul, memory: input.memory ?? current.memory, settings: input.settings ?? current.settings, updatedAt: 11 };
         return current;
       },
+      bot_memory_list: () => ({ entries: [{ id: "mem_seed", title: "Seeded entry", kind: "fact" as const, importance: 50, hook: "Preview hook text", reviewBy: null, updatedAt: 1 }] }),
     },
   });
   async function open() { fireEvent.contextMenu(await slot.findByText(current.name)); expect(slot.queryByRole("menuitem", { name: "View bot state…" })).toBeNull(); fireEvent.click(await slot.findByRole("menuitem", { name: "Edit bot…" })); }
@@ -52,7 +53,9 @@ it("puts the three active logical files in Edit bot with one Save and no separat
   expect(dialog.querySelectorAll("textarea")).toHaveLength(1);
   expect(within(dialog).queryByRole("button", { name: "Save file" })).toBeNull();
   expect(within(dialog).getByRole("button", { name: "Save bot" }).closest('[role="tabpanel"]')).toBeNull();
-  expect(slot.inspection.rpcCalls.every(call => ["bots_list", "bot_prepare"].includes(call.method) || call.method.startsWith("bot_memory_"))).toBe(true);
+  fireEvent.click(within(dialog).getByRole("tab", { name: "Memory" }));
+  expect(await within(dialog).findByText("Seeded entry")).toBeTruthy();
+  expect(within(dialog).getByText("Preview hook text")).toBeTruthy();
   expect(onNavigate).not.toHaveBeenCalled(); expect(slot.inspection.navigateCalls).toEqual([]);
   expect(dialog.textContent).not.toMatch(/\/home\/|Home folder|Unrelated checkout/);
 });

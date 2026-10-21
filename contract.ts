@@ -123,7 +123,9 @@ export const rpcContract = defineRpcContract({
   bot_memory_write: { input: z.object({
     botId: id, entryId: id.optional(), title: z.string().min(1).max(200), kind: botMemoryKindSchema, importance: z.number().int().min(0).max(100),
     body: z.string().min(1).max(4000), reviewBy: z.string().max(32).nullable().optional(), expectedSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
-  }).strict(), output: memoryEntrySchema },
+  }).strict().superRefine((value, ctx) => {
+    if (value.entryId && !value.expectedSha256) ctx.addIssue({ code: "custom", message: "expectedSha256 is required when updating a memory entry (entryId is set)" });
+  }), output: memoryEntrySchema },
   bot_memory_forget: { input: z.object({ botId: id, entryId: id, expectedSha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(), output: z.object({ id, forgotten: z.literal(true) }).strict() },
   bot_memory_stats: { input: z.object({ botId: id }).strict(), output: memoryStatsSchema },
 });

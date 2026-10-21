@@ -179,13 +179,15 @@ export default async function plugin(bb: BbPluginApi) {
     execute: async (input, ctx) => {
       const botId = await resolveOwner(ctx.threadId);
       if (!botId) throw new Error("This conversation is not assigned to a bot");
-      const parsed = botMemoryToolSchema.parse(input);
-      if (parsed.action === "list") return JSON.stringify({ entries: memory.listIndex(botId, parsed.kind, parsed.limit ?? 50) });
-      if (parsed.action === "read") return JSON.stringify(memory.readEntry(botId, parsed.id));
-      if (parsed.action === "search") return JSON.stringify({ entries: memory.search(botId, parsed.query, parsed.limit ?? 20) });
-      if (parsed.action === "write") return JSON.stringify(memory.writeEntry(botId, { id: parsed.id, title: parsed.title, kind: parsed.kind, importance: parsed.importance, body: parsed.body, reviewBy: parsed.reviewBy ?? null, expectedSha256: parsed.expectedSha256 }, "bot"));
-      if (parsed.action === "forget") return JSON.stringify(memory.forgetEntry(botId, parsed.id, parsed.expectedSha256, "bot"));
-      throw new Error("Unsupported action");
+      return serial(botId, async () => {
+        const parsed = botMemoryToolSchema.parse(input);
+        if (parsed.action === "list") return JSON.stringify({ entries: memory.listIndex(botId, parsed.kind, parsed.limit ?? 50) });
+        if (parsed.action === "read") return JSON.stringify(memory.readEntry(botId, parsed.id));
+        if (parsed.action === "search") return JSON.stringify({ entries: memory.search(botId, parsed.query, parsed.limit ?? 20) });
+        if (parsed.action === "write") return JSON.stringify(memory.writeEntry(botId, { id: parsed.id, title: parsed.title, kind: parsed.kind, importance: parsed.importance, body: parsed.body, reviewBy: parsed.reviewBy ?? null, expectedSha256: parsed.expectedSha256 }, "bot"));
+        if (parsed.action === "forget") return JSON.stringify(memory.forgetEntry(botId, parsed.id, parsed.expectedSha256, "bot"));
+        throw new Error("Unsupported action");
+      });
     },
   });
   bb.agents.registerTool({
