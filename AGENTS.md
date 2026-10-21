@@ -133,10 +133,13 @@ or reintroduce hover toolbars when making unrelated changes.
   heading. Preserve explicit custom sections. The Section dropdown includes
   Create New… (not a separate always-visible creation button).
 - Keep Create/Edit compact: small avatar beside name/role, Bot / Context /
-  Projects tabs, one logical file editor at a time, and a fixed visible
-  Save/Cancel footer. Do not bring back the tall stretching avatar panel or stack
-  all settings in one long form. Preserve drafts across tabs. Storage is private
-  and automatic: no home path picker or custom-working-directory control.
+  Projects / Memory tabs (Memory only when editing an existing bot), one logical
+  file editor at a time on Bot/Context/Projects, and a fixed visible Save/Cancel
+  footer. Do not bring back the tall stretching avatar panel or stack all settings
+  in one long form. Preserve drafts across tabs. Storage is private and automatic:
+  no home path picker or custom-working-directory control.
+  Memory lists level-1 entries and supports hash-checked edits to existing entries
+  only (no create/forget in the UI; use `bot_memory` or `bb bots memory`).
   Projects shows only linked projects, Member / Owner roles, and an unlink action.
   Add existing… opens a searchable picker; New project… opens an inline work-project
   form with an explicit machine and folder browser. Keep it mounted across tabs.
@@ -148,7 +151,8 @@ or reintroduce hover toolbars when making unrelated changes.
   Per-bot AGENTS.md is retired; preserve historical text as inactive private data,
   never inject it or offer it as an editable state file. Workspace AGENTS.md still applies.
 - Edit bot is the single editor: Context has one document picker for SOUL.md,
-  MEMORY.md, and settings.json. Avatar click opens a compact appearance popover;
+  MEMORY.md, and settings.json; Memory (existing bots only) is separate level-1
+  entry list/edit UI. Avatar click opens a compact appearance popover;
   one small dice button beside the avatar randomizes the draft. Do not restore
   separate Appearance/State tabs or a View bot state action.
   Save all changed fields atomically with the original revision and per-file hashes;
@@ -244,6 +248,7 @@ or reintroduce hover toolbars when making unrelated changes.
   naming the owner when present. Personal and legacy-home chats are explicit exceptions.
   Configuration stays read-only; project state reads refresh the relationship.
 - `bb bots list` exposes paginated public metadata, never private bot documents.
+  JSON may include per-bot `memory: { entries, bytes }` (counts only, not entry bodies).
   `bb bots message` uses native `threads.send` with `queue-if-active` and the invoking
   `senderThreadId`. Default to the first visible ordered root; explicit reply threads must resolve
   to the recipient bot. Resolve sender identity from bindings/inheritance, not project ownership.

@@ -8,7 +8,8 @@ description: Use Bots Fleet to find bots, understand their private state and pro
 The runtime plugin ID is `bots-fleet`; its CLI is `bb bots`.
 
 - Read public bot metadata with `bb bots list --json --limit 50 --offset 0`.
-  Listing and @ mentions never send messages or expose private state.
+  JSON may include per-bot `memory: { entries, bytes }` (counts only). Listing and
+  @ mentions never send messages or expose private documents or entry bodies.
 - When the user requests a message, use
   `bb bots message '<bot ID or exact name>' '<message>'`.
   It targets the bot's first ordered conversation and queues while busy.
@@ -28,9 +29,11 @@ The runtime plugin ID is `bots-fleet`; its CLI is `bb bots`.
   worktree conversation. Worktree starts seed a fresh worktree in BB's composer.
 - Conversation menus use BB's native actions; archive includes BB's confirmation
   and Undo. Older unassigned Chats appear under the clickable Other count.
-- Edit bot has Bot, Context, and Projects tabs. Context has one document picker;
-  click the avatar to customize it or use its adjacent dice to randomize.
-  Saving is explicit. Per-bot AGENTS.md is retired; workspace AGENTS.md applies.
+- Edit bot has Bot, Context, Projects, and (for existing bots) Memory tabs.
+  Context has one document picker; Memory lists level-1 entries and edits existing
+  ones with hash-checked saves. Click the avatar to customize it or use its adjacent
+  dice to randomize. Saving is explicit. Per-bot AGENTS.md is retired; workspace
+  AGENTS.md applies.
 - Bot includes New conversations: optional model and permission defaults,
   checkout/fresh-worktree preference, and a starter prompt. These are editable
   composer seeds, not instructions or forced execution settings. Existing

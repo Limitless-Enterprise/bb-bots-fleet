@@ -86,12 +86,15 @@ live entries and revision history mirror under `state/<bot-id>/memory/` in the p
 data directory. Only the bound bot can read or change its level-1 memory through
 `bot_memory`; other bots and unassigned conversations cannot access it.
 
-**Edit bot** has three tabs: **Bot**, **Context**, and **Projects**. Context has
-one document picker for SOUL.md, MEMORY.md, and settings.json. Click the avatar
-for appearance controls, or the small dice beside it to randomize its appearance.
-Its explicit Save commits changes
+**Edit bot** has **Bot**, **Context**, **Projects**, and (for existing bots)
+**Memory** tabs. Context has one document picker for SOUL.md, MEMORY.md, and
+settings.json. **Memory** lists private level-1 entries and lets you load and
+edit an existing entry with hash-checked saves (no create or forget in the UI).
+Click the avatar for appearance controls, or the small dice beside it to
+randomize its appearance. Its explicit Save commits Bot/Context/Projects changes
 together with revision/hash checks; invalid JSON or conflicts never partially save
-other fields. Use this editor or the state tools—not direct edits to exports.
+other fields. Level-1 entry saves use the Memory tab's per-entry Save. Use this
+editor or the state tools—not direct edits to exports.
 Export failures do not lose committed state or prevent conversations.
 The working machine can be offline while state is still readable/editable in BB.
 
@@ -347,7 +350,11 @@ for one bot (same counts embedded in `bb bots list --json` per bot).
 
 Messages use BB's native queue: idle conversations start a turn, busy conversations receive the message later. The default destination is the recipient's first visible ordered conversation; `--thread` must belong to that bot. Messages identify the invoking conversation and its bound bot, clearly distinguish agent coordination from user instructions, and include an asynchronous reply command. FYI messages need no acknowledgement. Unbound conversations and external CLI callers are labeled accurately. The CLI does not create conversations or change membership, bindings, permissions, or private state.
 
-Listing exposes public bot metadata only and paginates at 100 bots maximum. Names must match exactly; use IDs for duplicate names. Quote messages (maximum 12,000 characters). Delivery receipts confirm acceptance, not task completion or a reply.
+Listing exposes public bot metadata only and paginates at 100 bots maximum.
+`bb bots list --json` also includes per-bot `memory: { entries, bytes }` (live
+entry count and total body bytes, never entry titles or bodies). Names must match
+exactly; use IDs for duplicate names. Quote messages (maximum 12,000 characters).
+Delivery receipts confirm acceptance, not task completion or a reply.
 
 `bb bots list` also shows **STATUS**, **VISIBILITY**, **OWNED PROJECTS**, and
 **JOINED PROJECTS** by name. Joined projects are memberships without ownership;

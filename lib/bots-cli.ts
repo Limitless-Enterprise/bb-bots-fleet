@@ -15,7 +15,7 @@ Messages go to the bot's first conversation by default and queue while it is bus
 --thread targets a conversation belonging to that bot (for replies).
 Sender identity comes from the invoking BB thread; there is no --from override.
 Quote names/messages containing spaces. Use -- before positional values beginning with --.
-List output contains public bot metadata, never private state.`;
+List output contains public bot metadata, never private documents. JSON includes per-bot memory entry/byte counts only (not entry bodies).`;
 const MESSAGE_MAX_CHARS = 12000;
 const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 const printable = (value: string) => value.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
@@ -89,7 +89,7 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
   bb.cli.register({
     name: "bots", summary: "List bots and send attributed asynchronous messages to their conversations",
     commands: [
-      { name: "list", summary: "List bot IDs, activity, visibility, and owned/joined project names without private state", usage: "bb bots list [--json] [--limit 1-100] [--offset N]" },
+      { name: "list", summary: "List bot IDs, activity, visibility, owned/joined project names, and level-1 memory counts (JSON only; no entry bodies)", usage: "bb bots list [--json] [--limit 1-100] [--offset N]" },
       { name: "message", summary: "Message a bot's first conversation, or reply to one of its conversations; queues while busy", usage: "bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]" },
     ],
     async run(argv, ctx) {
