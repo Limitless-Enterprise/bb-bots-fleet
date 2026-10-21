@@ -98,15 +98,10 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
         const fleet = new Set(FLEET_COMMANDS.map((command) => command.name));
         if (fleet.has(argv[0] as typeof FLEET_COMMANDS[number]["name"])) {
           if (!ops) throw new Error("Fleet CLI is unavailable");
-          return await runFleetCommand(argv[0]!, argv.slice(1), ctx, bb, store, ops, resolveOwner);
+          return await runFleetCommand(argv[0]!, argv.slice(1), ctx, bb, store, ops, resolveOwner, memory);
         }
         const options = parse(argv);
         if (!options) return { exitCode: 0, stdout: USAGE };
-        if (options.command === "show") {
-          const bot = recipient(store, options.positional[0]!);
-          const stats = memory.stats(bot.id);
-          return { exitCode: 0, stdout: options.json ? JSON.stringify({ id: bot.id, name: bot.name, role: bot.role, memory: stats }) : `${bot.id}\tmemory.entries=${stats.entries}\tmemory.bytes=${stats.bytes}` };
-        }
         if (options.command === "list") {
           const all = store.list();
           const { activity, firstThreads } = await listBotCliActivity(bb, store, resolveOwner, ctx);

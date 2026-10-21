@@ -3,6 +3,7 @@ import { readFileSync as readFs } from "node:fs";
 import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
 import type { BotMetadata } from "../contract";
 import { avatarSchema } from "../contract";
+import type { BotMemory } from "./bot-memory";
 import type { BotStore } from "./bot-store";
 import type { createBotOps } from "./bot-ops";
 import { newNodeId, nodePathSegments, nodeDisplayPath, resolveNodePath, type BotNode, type BotNodeMetadata } from "./bot-nodes";
@@ -66,10 +67,10 @@ async function machineId(bb: BbPluginApi, selector: string) {
   return (await resolveMachine(bb, selector)).id;
 }
 
-export async function runFleetCommand(command: string, argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>): Promise<{ exitCode: number; stdout?: string; stderr?: string }> {
+export async function runFleetCommand(command: string, argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, memory: BotMemory): Promise<{ exitCode: number; stdout?: string; stderr?: string }> {
   try {
     if (command === "node") return await runNode(argv, ctx, bb, store);
-    if (command === "show") return await runShow(argv, ctx, bb, store, resolveOwner);
+    if (command === "show") return await runShow(argv, ctx, bb, store, resolveOwner, memory);
     if (command === "create") return await runCreate(argv, ctx, bb, store, ops);
     if (command === "update") return await runUpdate(argv, ctx, bb, store, ops);
     if (command === "link") return await runLink(argv, ctx, bb, store, ops, "link");
@@ -135,7 +136,7 @@ async function runNode(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, s
   throw new Error(`Unknown node command: ${sub}`);
 }
 
-async function runShow(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>) {
+async function runShow(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, memory: BotMemory) {
   const { flags, positional, json } = parseFlags(argv, new Set(["--json"]), 1);
   const bot = resolveBotSelector(store, positional[0]!);
   const nodes = store.nodes.list();
@@ -155,7 +156,7 @@ async function runShow(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, s
     parent,
     section,
     soul: { chars: bot.soul.length, sha256: sha256(bot.soul) },
-    memory: { chars: bot.memory.length, max: 3000 },
+    memory: memory.stats(bot.id),
     launchPreset: bot.launchPreset ?? null,
     projects: bot.linkedProjectIds.map((id) => ({ id, name: projects.get(id) ?? "Unavailable project", role: owned.includes(id) ? "owner" as const : "member" as const })),
     main: mainThreadId ? { threadId: mainThreadId, projectId: null, archived: false } : null,
