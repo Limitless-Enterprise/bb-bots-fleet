@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { makePluginAgentConfigurationContext, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { backend } from "./backend-fixture";
@@ -86,5 +86,16 @@ describe("private bot memory", () => {
     expect(exported.exitCode).toBe(0);
     const history = JSON.parse(readFileSync(join(dir, "history", `${created.id}.json`), "utf8"));
     expect(history.some((row: { body: string }) => row.body === "Version one")).toBe(true);
+  });
+
+  it("removes mirrored history exports when an entry is forgotten", async () => {
+    const { host, a, ctx, write } = await setup();
+    const created = JSON.parse(String(await write(a.id, "Forget me later")));
+    await host.harness.behavior.callAgentTool("bot_memory", {
+      action: "forget", id: created.id, expectedSha256: created.sha256,
+    }, ctx(a.id));
+    const memoryDir = join(dirname(host.store.databasePath), "state", a.id, "memory");
+    expect(existsSync(join(memoryDir, `${created.id}.json`))).toBe(false);
+    expect(existsSync(join(memoryDir, "history", `${created.id}.json`))).toBe(false);
   });
 });

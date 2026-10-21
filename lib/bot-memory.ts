@@ -159,6 +159,13 @@ export function createBotMemory(bb: BbPluginApi, store: BotStore, publish: () =>
       }
       const historyDir = join(path, "history");
       ensureDirectory(historyDir);
+      for (const name of readdirSync(historyDir)) {
+        if (name.startsWith(".") || !name.endsWith(".json")) continue;
+        const id = name.slice(0, -5);
+        if (!live.has(id)) {
+          try { unlinkSync(join(historyDir, name)); } catch (error) { if (!missing(error)) throw error; }
+        }
+      }
       for (const entryId of live) {
         const history = readHistory(entryId);
         atomicExport(historyDir, `${entryId}.json`, `${JSON.stringify(history, null, 2)}\n`);
