@@ -240,7 +240,9 @@ in bot state.
 - **Main** is the invisible default section. Explicit custom sections retain their
   headings. Drag bots to reorder/move; the Section picker includes **Create New…**.
 - Create/Edit stays compact: small avatar with a dice button, name/role, Bot /
-  Context / Projects tabs, one file editor, and an always-visible footer.
+  Context / Projects / Memory tabs (Memory when editing an existing bot), one file
+  editor on Bot/Context/Projects, and an always-visible footer for those tabs.
+  Memory lists level-1 entries with per-entry hash-checked saves (no create/forget).
   New bots get a random appearance once per draft; existing bots stay unchanged.
   Appearance offers **8 shapes, 16 expressions, 3 idle motions, and 14 coloured
   presets**, with no black/white/neutral presets. **Randomize appearance** rerolls

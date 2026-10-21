@@ -1,0 +1,4 @@
+{"at":"2026-10-21T18:28:51.357Z","cliVersion":"0.46.1","code":"missing_command","command":"plugin rpc","exitCode":1,"threadId":null,"token":null}
+{"at":"2026-10-21T18:30:17.869Z","cliVersion":"0.46.1","code":"missing_command","command":"plugin rpc","exitCode":1,"threadId":null,"token":null}
+{"at":"2026-10-21T18:30:33.292Z","cliVersion":"0.46.1","code":"unknown_command","command":"plugin rpc","exitCode":1,"threadId":null,"token":"bots-fleet"}
+{"at":"2026-10-21T18:31:41.570Z","cliVersion":"0.46.1","code":"http_500","command":"plugin rpc call","exitCode":1,"threadId":null,"token":null}

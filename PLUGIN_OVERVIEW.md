@@ -13,7 +13,10 @@ Give recurring work a named specialist without tying its identity to one reposit
 
 Use a bot's `+` to start a conversation in a project it owns, or a personal workspace when it owns none. BB's native composer lets you change the project and machine; a separate action creates a fresh worktree. Edit a bot's instructions, memory, settings, and project roles in one dialog.
 
-Bot state lives in BB's private plugin storage, not in project files. Agents read and update their own state through `bot_read_state` and `bot_update_state`. Mentioning a bot does not send a message or reassign the current conversation by itself.
+Bot state lives in BB's private plugin storage, not in project files. Agents use
+`bot_read_state` and `bot_update_state` for identity, `MEMORY.md`, settings, and
+project roles, and `bot_memory` for private structured level-1 entries. Mentioning
+a bot does not send a message or reassign the current conversation by itself.
 
 ## Requirements
 

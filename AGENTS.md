@@ -157,8 +157,10 @@ or reintroduce hover toolbars when making unrelated changes.
   entry list/edit UI. Avatar click opens a compact appearance popover;
   one small dice button beside the avatar randomizes the draft. Do not restore
   separate Appearance/State tabs or a View bot state action.
-  Save all changed fields atomically with the original revision and per-file hashes;
-  invalid JSON/conflicts keep every draft and never partially save identity/state.
+  Footer Save commits Bot/Context/Projects atomically with the original revision
+  and per-file hashes; invalid JSON/conflicts keep every draft and never partially
+  save identity/state. Memory tab entry saves use `bot_memory_*` RPCs immediately
+  (per-entry Save), not the footer.
 - New bot drafts randomize color, shape, expression, and idle motion ONCE. Existing
   bots and rerenders never reroll. Offer Randomize appearance explicitly. Presets
   and random defaults are chromatic; no black/white/cream/gray (including migration
