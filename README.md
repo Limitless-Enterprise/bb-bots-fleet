@@ -344,9 +344,14 @@ bb bots message <bot-id-or-exact-name> "Please review the changes"
 bb bots message <bot-id> "My reply" --thread <sender-conversation-id>
 ```
 
-`bb bots memory` is operator-only: it cannot run from inside a BB thread or when
-`BB_THREAD_ID` is set. `bb bots show` prints level-1 memory entry and byte counts
-for one bot (same counts embedded in `bb bots list --json` per bot).
+`bb bots memory` refuses calls that carry a BB thread context (the CLI derives
+`ctx.threadId` from the caller's environment). On a single machine and OS user
+this is policy-enforced, not isolation: a shell can run
+`env -u BB_THREAD_ID bb bots memory …` and read any bot's level-1 memory. Full
+isolation requires bot conversations on execution machines separate from the BB
+server (ADR 0010 §7; foundation §6.7). `bb bots show` prints level-1 memory
+entry and byte counts for one bot (same counts embedded in `bb bots list --json`
+per bot).
 
 Messages use BB's native queue: idle conversations start a turn, busy conversations receive the message later. The default destination is the recipient's first visible ordered conversation; `--thread` must belong to that bot. Messages identify the invoking conversation and its bound bot, clearly distinguish agent coordination from user instructions, and include an asynchronous reply command. FYI messages need no acknowledgement. Unbound conversations and external CLI callers are labeled accurately. The CLI does not create conversations or change membership, bindings, permissions, or private state.
 

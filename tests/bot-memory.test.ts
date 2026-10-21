@@ -88,6 +88,34 @@ describe("private bot memory", () => {
     expect(history.some((row: { body: string }) => row.body === "Version one")).toBe(true);
   });
 
+  it("keeps list and show JSON metadata-only while MEMORY.md cache stays separate", async () => {
+    const TITLE = "METADATA_ONLY_TITLE_SENTINEL";
+    const BODY = "METADATA_ONLY_BODY_SENTINEL_LINE";
+    const LEGACY = "LEGACY_MEMORY_MD_CACHE_SENTINEL";
+    const { host, a, ctx, write, run } = await setup();
+    host.store.save({ ...host.store.require(a.id), memory: LEGACY });
+    await host.harness.behavior.callAgentTool("bot_memory", {
+      action: "write", title: TITLE, kind: "fact", importance: 50, body: BODY,
+    }, ctx(a.id));
+    const listJson = await run(["list", "--json"]);
+    const showJson = await run(["show", a.id, "--json"]);
+    expect(listJson.exitCode).toBe(0);
+    expect(showJson.exitCode).toBe(0);
+    const listText = listJson.stdout!;
+    const showText = showJson.stdout!;
+    expect(listText).not.toContain(TITLE);
+    expect(listText).not.toContain(BODY);
+    expect(showText).not.toContain(TITLE);
+    expect(showText).not.toContain(BODY);
+    expect(listText).not.toContain(LEGACY);
+    expect(showText).not.toContain(LEGACY);
+    const list = JSON.parse(listText);
+    const show = JSON.parse(showText);
+    expect(list.bots.find((bot: { id: string }) => bot.id === a.id)?.memory).toEqual({ entries: 1, bytes: BODY.length });
+    expect(show.memory).toEqual({ entries: 1, bytes: BODY.length });
+    expect(host.store.require(a.id).memory).toBe(LEGACY);
+  });
+
   it("removes mirrored history exports when an entry is forgotten", async () => {
     const { host, a, ctx, write } = await setup();
     const created = JSON.parse(String(await write(a.id, "Forget me later")));

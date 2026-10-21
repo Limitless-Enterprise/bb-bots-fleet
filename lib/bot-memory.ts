@@ -232,7 +232,7 @@ export function createBotMemory(bb: BbPluginApi, store: BotStore, publish: () =>
     store.require(botId);
     if (input.body.length > MEMORY_ENTRY_MAX_CHARS) throw new Error(`Memory body must be at most ${MEMORY_ENTRY_MAX_CHARS} characters`);
     const now = Date.now();
-    return connection.transaction(() => {
+    const result = connection.transaction(() => {
       if (input.id) {
         const current = requireLive(botId, input.id);
         if (!input.expectedSha256) throw new Error("expectedSha256 is required when updating a memory entry");
@@ -246,10 +246,7 @@ export function createBotMemory(bb: BbPluginApi, store: BotStore, publish: () =>
         connection.prepare("UPDATE bot_memory_entries SET title = ?, kind = ?, importance = ?, body = ?, review_by = ?, sha256 = ?, updated_at = ? WHERE id = ? AND bot_id = ?").run(
           input.title, input.kind, input.importance, nextBody, input.reviewBy, nextSha, now, input.id, botId,
         );
-        const updated = requireLive(botId, input.id);
-        mirrorExports(botId);
-        publish();
-        return mapEntry(updated);
+        return mapEntry(requireLive(botId, input.id));
       }
       if (liveCount(botId) >= MEMORY_MAX_LIVE_ENTRIES) throw new Error(`This bot already has ${MEMORY_MAX_LIVE_ENTRIES} live memory entries`);
       const id = `mem_${randomUUID()}`;
@@ -258,23 +255,24 @@ export function createBotMemory(bb: BbPluginApi, store: BotStore, publish: () =>
         id, botId, input.title, input.kind, input.importance, input.body, input.reviewBy, sha256, now, now,
       );
       recordHistory(id, input.body, actor);
-      const created = requireLive(botId, id);
-      mirrorExports(botId);
-      publish();
-      return mapEntry(created);
+      return mapEntry(requireLive(botId, id));
     }).immediate();
+    mirrorExports(botId);
+    publish();
+    return result;
   }
 
   function forgetEntry(botId: string, entryId: string, expectedSha256: string, actor: "bot" | "operator") {
-    const current = requireLive(botId, entryId);
-    if (current.sha256 !== expectedSha256) throw new BotStateConflictError("Memory entry changed. Read it again and retry with its sha256.");
-    return connection.transaction(() => {
+    const result = connection.transaction(() => {
+      const current = requireLive(botId, entryId);
+      if (current.sha256 !== expectedSha256) throw new BotStateConflictError("Memory entry changed. Read it again and retry with its sha256.");
       recordHistory(entryId, current.body, actor);
       connection.prepare("UPDATE bot_memory_entries SET deleted_at = ?, updated_at = ? WHERE id = ? AND bot_id = ?").run(Date.now(), Date.now(), entryId, botId);
-      mirrorExports(botId);
-      publish();
       return { id: entryId, forgotten: true as const };
     }).immediate();
+    mirrorExports(botId);
+    publish();
+    return result;
   }
 
   function stats(botId: string) {

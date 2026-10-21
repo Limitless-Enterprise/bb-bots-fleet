@@ -12,7 +12,6 @@ bb bots memory <bot> export --to <directory>`;
 
 function assertOperatorShell(ctx: PluginCliContext) {
   if (ctx.threadId) throw new Error("bb bots memory is operator-only and cannot run from a BB thread");
-  if (process.env.BB_THREAD_ID) throw new Error("bb bots memory is operator-only and cannot run when BB_THREAD_ID is set");
 }
 
 function recipient(bots: BotMetadata[], selector: string) {

@@ -71,8 +71,10 @@ existing conversation histories and track legacy home project IDs for compatibil
   per-bot `serial` as state reads/updates. Entry bodies max 4000 characters; at most
   300 live entries per bot. Creates omit `id`; updates require `id` + fresh
   `expectedSha256`; forget requires `expectedSha256`. Prune forgotten entries from
-  live and history mirror exports. `bb bots memory` is operator-only (no BB thread /
-  `BB_THREAD_ID`). Do not expose export paths to agents.
+  live and history mirror exports. `bb bots memory` refuses CLI calls that carry a
+  thread context; on one machine/OS user that is policy, not isolation (callers can
+  drop `BB_THREAD_ID` in the shell). Separate execution machines are required for
+  ADR 0010 isolation. Do not expose export paths to agents.
 
 # Bots sidebar UX contract
 
