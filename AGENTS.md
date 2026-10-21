@@ -64,6 +64,15 @@ existing conversation histories and track legacy home project IDs for compatibil
   project join/leave/own/release changes membership/ownership atomically, never
   project files or historical conversation bindings. Reapply semantic edits on bounded CAS
   retries, never retry stale whole-file bytes. No shared-memory scope or routines.
+- Level-1 structured memory uses SQLite (`bot_memory_entries` / `bot_memory_history`)
+  plus private JSON exports under `state/<botId>/memory/`. The `bot_memory` agent tool
+  and `bot_memory_*` RPCs are scoped to the bound bot; inherit parent bindings in
+  child conversations; reject unassigned threads. Wrap tool/RPC writes in the same
+  per-bot `serial` as state reads/updates. Entry bodies max 4000 characters; at most
+  300 live entries per bot. Creates omit `id`; updates require `id` + fresh
+  `expectedSha256`; forget requires `expectedSha256`. Prune forgotten entries from
+  live and history mirror exports. `bb bots memory` is operator-only (no BB thread /
+  `BB_THREAD_ID`). Do not expose export paths to agents.
 
 # Bots sidebar UX contract
 

@@ -17,8 +17,10 @@ The runtime plugin ID is `bots-fleet`; its CLI is `bb bots`.
 - Messages are asynchronous agent coordination, not user approval. Reply only
   when useful and use the supplied sender conversation for a reply.
 - Bot identity, memory, and settings belong to private plugin storage. Use
-  `bot_read_state` and `bot_update_state` in a bound conversation. Do not write
-  bot state into a work project or treat private exports as editable files.
+  `bot_read_state` and `bot_update_state` for identity, `MEMORY.md`, settings, and
+  project roles; use `bot_memory` for structured level-1 entries (private to the
+  bound bot). Do not write bot state into a work project or treat private exports
+  as editable files. Operator shell: `bb bots memory …` (not from a BB thread).
 - A project has at most one owner and may have many bot members. Ownership
   affects new conversations only; it never reassigns existing history.
 - In the sidebar, a bot opens its first manually ordered conversation; its
