@@ -13,7 +13,7 @@ import { avatar, backend, project } from "./backend-fixture";
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
 
-function seedSidebarDatabase(path: string, botId = "bot_sidebar") {
+function seedSidebarDatabase(path: string, botId = "bot_sidebar", linkedProjectIds: string[] = ["project"]) {
   mkdirSync(join(path, "state", botId), { recursive: true });
   writeFileSync(join(path, "state", botId, "SOUL.md"), "Sidebar soul");
   const db = new Database(join(path, "data.db"));
@@ -26,7 +26,7 @@ function seedSidebarDatabase(path: string, botId = "bot_sidebar") {
   `);
   db.prepare("INSERT INTO bots(id,data) VALUES (?,?)").run(botId, JSON.stringify({
     id: botId, name: "Sidebar bot", role: "Helper", avatar: { color: "#168b75", shape: "round", expression: "curious", motion: "still" },
-    hostId: "host-home", stateReady: true, legacyHomeProjectId: null, linkedProjectIds: [], mainThreadId: "thread-1",
+    hostId: "host-home", stateReady: true, legacyHomeProjectId: null, linkedProjectIds, mainThreadId: "thread-1",
     hiddenUntilActivity: false, hiddenAt: null, sectionId: null, order: 0, soul: "Sidebar soul", agents: "", memory: "",
     settings: {}, stateHashes: { "SOUL.md": null, "AGENTS.md": null, "MEMORY.md": null, "settings.json": null }, updatedAt: 1, legacyProjectId: null,
   }));
@@ -74,13 +74,20 @@ it("defers v1 project import until bots-sidebar storage is migrated", async () =
   });
   cleanups.push(() => host.harness.lifecycle.dispose());
   await plugin(host.bb);
-  const before = await host.harness.behavior.callRpc("bots_list", null) as { bots: BotMetadata[] };
+  const before = await host.harness.behavior.callRpc("bots_list", null) as { bots: BotMetadata[]; warnings: string[] };
   expect(before.bots).toEqual([]);
+  expect(before.warnings.join(" ")).toContain("migrate-from bots-sidebar");
+  await expect(host.harness.behavior.callRpc("bot_create", {
+    name: "Early bot", role: "Helper", hostId: "host-project", avatar, sectionId: null, linkedProjectIds: ["project"], soul: "Blocked",
+  })).rejects.toThrow(/migrate-from bots-sidebar/);
   const migrate = await host.harness.behavior.runCli(["migrate-from", "bots-sidebar", "--json"]);
   expect(migrate.exitCode).toBe(0);
   const store = createBotStore(host.bb);
   expect(store.list()).toHaveLength(1);
   expect(store.owner("thread-1")).toBe("bot_sidebar");
+  const after = await host.harness.behavior.callRpc("bots_list", null) as { bots: BotMetadata[] };
+  expect(after.bots).toHaveLength(1);
+  expect(after.bots[0]!.id).toBe("bot_sidebar");
 });
 
 it("imports bots-sidebar storage once and records migration metadata", async () => {

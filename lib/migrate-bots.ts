@@ -16,7 +16,12 @@ type Snapshot = { projectIds: string[]; done: string[]; capturedAt: number };
 function isMissing(error: unknown) {
   return error instanceof Error && /ENOENT|no such file or directory|file not found|path (?:does not exist|not found)/i.test(error.message);
 }
-function sidebarMigrationPending(bb: BbPluginApi, store: BotStore) {
+export const SIDEBAR_MIGRATION_PENDING_WARNING =
+  "Sidebar storage found. Run `bb bots migrate-from bots-sidebar` to import your bots.";
+export const SIDEBAR_MIGRATION_PENDING_CREATE_ERROR =
+  "Complete sidebar migration first: run `bb bots migrate-from bots-sidebar` before creating bots here.";
+
+export function sidebarMigrationPending(bb: BbPluginApi, store: BotStore) {
   if (store.state(PLUGIN_MIGRATION_STATE_KEY)) return false;
   return existsSync(join(pluginDataDirectory(bb, BOTS_SIDEBAR_ORIGIN), "data.db"));
 }
@@ -42,7 +47,7 @@ export function createLegacyImporter(bb: BbPluginApi, store: BotStore) {
       const project = projects.find((project) => project.id === projectId);
       if (!project) { snapshot.done.push(projectId); store.setState("legacy-snapshot", snapshot); continue; }
       try {
-        let bot = store.list().find((bot) => bot.legacyProjectId === projectId);
+        let bot = store.list().find((bot) => bot.legacyProjectId === projectId || bot.linkedProjectIds.includes(projectId));
         if (!bot) {
           const source = project.sources.find((source) => source.isDefault) ?? project.sources[0];
           if (!source) throw new Error("No project source is available");
@@ -102,7 +107,7 @@ export function createLegacyImporter(bb: BbPluginApi, store: BotStore) {
     return warnings;
   }
   return () => {
-    if (sidebarMigrationPending(bb, store)) return Promise.resolve([]);
+    if (sidebarMigrationPending(bb, store)) return Promise.resolve([SIDEBAR_MIGRATION_PENDING_WARNING]);
     if (!inFlight) inFlight = run().finally(() => { inFlight = null; });
     return inFlight;
   };
