@@ -249,12 +249,20 @@ or reintroduce hover toolbars when making unrelated changes.
 - Agent context states its relationship to the current project (owner/member/unjoined),
   naming the owner when present. Personal and legacy-home chats are explicit exceptions.
   Configuration stays read-only; project state reads refresh the relationship.
-- `bb bots list` exposes paginated public metadata, never private bot documents.
-  JSON may include per-bot `memory: { entries, bytes }` (counts only, not entry bodies).
-  `bb bots message` uses native `threads.send` with `queue-if-active` and the invoking
-  `senderThreadId`. Default to the first visible ordered root; explicit reply threads must resolve
-  to the recipient bot. Resolve sender identity from bindings/inheritance, not project ownership.
+- `bb bots list` exposes paginated public metadata (including fleet **address** and
+  **parent** columns), never private bot documents. JSON may include per-bot
+  `memory: { entries, bytes }` (counts only, not entry bodies). `bb bots message`
+  uses native `threads.send` with `queue-if-active` and the invoking
+  `senderThreadId`. Bot selectors resolve stable IDs, fleet addresses (`app/bot`,
+  `app/schema/bot`), unique shared names, or unique node-local names; ambiguous names
+  error with address hints. Default to the first visible ordered root; explicit reply
+  threads must resolve to the recipient bot. Resolve sender identity from
+  bindings/inheritance, not project ownership.
   Never forge a sender, auto-create a conversation, or change permissions/bindings to send.
+- Fleet registry CLI (`bb bots node`, `create`, `update`, `show`, `tree`, `link`,
+  `unlink`, `release`) lives in `lib/fleet-cli.ts`; create nodes before `--node`
+  bots. User-facing command detail is in README Bot coordination and the external
+  Bots CLI LLD linked there.
 - Frame messages as asynchronous agent coordination, not user approval. Include an exact
   sender-conversation reply command and discourage acknowledgement-only loops.
   Test delivery with the SDK fake host; never send unsolicited live test messages.

@@ -10,9 +10,9 @@ import { listBotCliActivity } from "./bot-cli-activity";
 import { listBotConversations } from "./bot-conversations";
 
 const USAGE = `bb bots list [--json] [--limit 1-100] [--offset N]
-bb bots show <bot-id-or-exact-name> [--json]
+bb bots show <bot-id-or-address> [--json]
 bb bots memory <bot> list|read <id>|edit <id> --from <file>|export --to <dir>
-bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]
+bb bots message <bot-id-or-address> <message> [--thread <conversation-id>] [--json]
 
 Messages go to the bot's first conversation by default and queue while it is busy.
 --thread targets a conversation belonging to that bot (for replies).
@@ -87,8 +87,8 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
   bb.cli.register({
     name: "bots", summary: "List bots and send attributed asynchronous messages to their conversations",
     commands: [
-      { name: "list", summary: "List bot IDs, activity, visibility, owned/joined project names, and level-1 memory counts (JSON only; no entry bodies)", usage: "bb bots list [--json] [--limit 1-100] [--offset N]" },
-      { name: "message", summary: "Message a bot's first conversation, or reply to one of its conversations; queues while busy", usage: "bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]" },
+      { name: "list", summary: "List bot IDs, fleet addresses, parents, activity, visibility, project names, and level-1 memory counts (JSON only; no entry bodies)", usage: "bb bots list [--json] [--limit 1-100] [--offset N]" },
+      { name: "message", summary: "Message a bot's first conversation, or reply to one of its conversations; queues while busy", usage: "bb bots message <bot-id-or-address> <message> [--thread <conversation-id>] [--json]" },
       ...FLEET_COMMANDS,
     ],
     async run(argv, ctx) {

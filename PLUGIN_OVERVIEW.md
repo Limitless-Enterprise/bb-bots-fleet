@@ -7,7 +7,7 @@ Give recurring work a named specialist without tying its identity to one reposit
 - A sidebar that groups conversations by bot, keeps active work visible, and folds older chats into expandable trees.
 - Drag-to-bot assignment for existing chats, plus inline archive controls.
 - Project membership and one optional owner per project to route new conversations. Existing conversation assignments stay intact.
-- `@` completion for bot references and attributed asynchronous coordination through `bb bots list` and `bb bots message`.
+- `@` completion for bot references and attributed asynchronous coordination through `bb bots list` and `bb bots message`, plus a fleet registry CLI (`node`, `create`, `update`, `show`, `tree`, `link`) for app nodes and bot addresses.
 
 ## How it works
 
