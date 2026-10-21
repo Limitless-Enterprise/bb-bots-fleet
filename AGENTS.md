@@ -23,9 +23,10 @@ existing conversation histories and track legacy home project IDs for compatibil
 - Runtime ID: `bots-fleet`; package: `bb-plugin-bots-fleet`; display name:
   Bots Fleet. The sidebar heading can remain Bots.
 - `bots` is another marketplace plugin's ID. Do not add a runtime alias or read
-  its private directory/KV automatically. Our old local namespace was migrated
-  explicitly with backups. Historical thread origin IDs remain unchanged; durable
-  bindings identify our old conversations. New starts must use `bb.pluginId`.
+  its private directory/KV automatically. **Bots Sidebar** (`bots-sidebar`) is the
+  one-time migrate-from source (`bb bots migrate-from bots-sidebar`); operator steps
+  live in README § Plugin identity. Historical thread origin IDs remain unchanged;
+  durable bindings identify our old conversations. New starts must use `bb.pluginId`.
 - Keep native tool names, SQL table names, RPC names, and existing `bots:` client
   preference/composer-draft keys stable. They are not runtime plugin identities.
 
@@ -47,9 +48,11 @@ existing conversation histories and track legacy home project IDs for compatibil
   fire-and-forget thread.created event alone is insufficient. Configuration
   lookups are read-only; they must not preempt an inherited binding + join.
 - Legacy migration is snapshot-based and read-only for old projects. Keep old
-  main pointers/history. Import v2 state from legacy homes once when available,
-  preserving a cached fallback and warning if unavailable; never overwrite newer
-  private state on a later retry.
+  main pointers/history. While sidebar `data.db` exists and migrate-from has not
+  recorded `plugin-migration-from`, defer version-1 project/KV import and reject
+  `bot_create` with the migrate-from instruction. Import v2 state from legacy homes
+  once when available, preserving a cached fallback and warning if unavailable; never
+  overwrite newer private state on a later retry.
 - Bot state belongs to plugin storage, never a working repository. State writes
   use SQLite transactions and expected hashes/revisions. Markdown/JSON files are
   private exports, not a second write interface or runtime working directory.

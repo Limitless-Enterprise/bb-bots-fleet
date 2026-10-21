@@ -284,7 +284,10 @@ the old data once:
 `bb bots migrate-from bots-sidebar` copies `data.db` and the `state/` exports from
 `<data-dir>/plugins/bots-sidebar/` into Bots Fleet after confirming Bots Sidebar is
 disabled and has no pending conversation-start tokens. It records the migration in
-`bot_state` and is one-time only. Bot IDs, main pointers, thread bindings, and
+`bot_state` and is one-time only. Until that command succeeds, Bots Fleet shows a
+warning on refresh, `bb bots list` prints the same hint on stderr, new bot creation
+is blocked, and version-1 project import stays deferred even if you open the sidebar
+before step 3. Bot IDs, main pointers, thread bindings, and
 historical `originPluginId` values (including `bots-sidebar` and the earlier private
 `bots` namespace) stay unchanged; routing still resolves through saved bindings.
 Keep a backup of both plugin directories before switching. Client layout and
@@ -298,8 +301,9 @@ bindings are preserved. Version-2 home state is imported once after verifying it
 ownership marker. Missing/offline/corrupt sources fall back to that bot's own cached
 state with a warning; later source changes never overwrite newer private state.
 Version-1 project-backed records are still imported from a one-time snapshot,
-including reconciled live/archived history. Ordinary/new projects never become
-bots automatically.
+including reconciled live/archived history, but only after any pending Bots Sidebar
+handoff in § Plugin identity completes. Ordinary/new projects never become bots
+automatically.
 
 Migration never deletes or modifies legacy source files, project folders, or
 conversations. Old home projects are retained for existing history but are not
