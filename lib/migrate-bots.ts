@@ -1,8 +1,13 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { avatarSchema, type BotMetadata, type BotSection } from "../contract";
 import { paletteColorForSeed } from "./appearance";
+import { BOTS_SIDEBAR_ORIGIN } from "./bot-plugin-origins";
 import { EMPTY_HASHES, type BotStore } from "./bot-store";
+import { PLUGIN_MIGRATION_STATE_KEY } from "./migrate-from-plugin";
+import { pluginDataDirectory } from "./plugin-data-dir";
 const legacyFile = (root: string, name: string) => `${root.replace(/\/+$/, "")}/${name}`;
 
 const LEGACY_KEY = "project-bots-v1";
@@ -10,6 +15,10 @@ const LEGACY_SECTIONS = "project-bot-sections-v1";
 type Snapshot = { projectIds: string[]; done: string[]; capturedAt: number };
 function isMissing(error: unknown) {
   return error instanceof Error && /ENOENT|no such file or directory|file not found|path (?:does not exist|not found)/i.test(error.message);
+}
+function sidebarMigrationPending(bb: BbPluginApi, store: BotStore) {
+  if (store.state(PLUGIN_MIGRATION_STATE_KEY)) return false;
+  return existsSync(join(pluginDataDirectory(bb, BOTS_SIDEBAR_ORIGIN), "data.db"));
 }
 export function createLegacyImporter(bb: BbPluginApi, store: BotStore) {
   let inFlight: Promise<string[]> | null = null;
@@ -93,6 +102,7 @@ export function createLegacyImporter(bb: BbPluginApi, store: BotStore) {
     return warnings;
   }
   return () => {
+    if (sidebarMigrationPending(bb, store)) return Promise.resolve([]);
     if (!inFlight) inFlight = run().finally(() => { inFlight = null; });
     return inFlight;
   };

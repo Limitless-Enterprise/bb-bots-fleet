@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, expect, it } from "vitest";
 import { createFakePluginHost, makeMessageDispatchHookContext, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
+import type { BotMetadata } from "../contract";
 import { createBotStore } from "../lib/bot-store";
 import { PLUGIN_MIGRATION_STATE_KEY } from "../lib/migrate-from-plugin";
 import plugin from "../server";
-import { backend } from "./backend-fixture";
+import { avatar, backend, project } from "./backend-fixture";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
@@ -32,6 +33,55 @@ function seedSidebarDatabase(path: string, botId = "bot_sidebar") {
   db.prepare("INSERT INTO bot_threads(thread_id,bot_id) VALUES (?,?)").run("thread-1", botId);
   db.close();
 }
+
+it("defers v1 project import until bots-sidebar storage is migrated", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "bots-migrate-"));
+  cleanups.push(() => rmSync(dataDir, { recursive: true, force: true }));
+  const sidebarDir = join(dataDir, "plugins", "bots-sidebar");
+  mkdirSync(sidebarDir, { recursive: true });
+  seedSidebarDatabase(sidebarDir);
+  const host = createFakePluginHost({
+    pluginId: "bots-fleet",
+    dataDir,
+    sdk: {
+      plugins: { list: async () => ({ plugins: [{ id: "bots-sidebar", enabled: false }] }) },
+      projects: {
+        list: async (args) => {
+          const personal = { ...project("personal"), kind: "personal" as const, sources: [] };
+          const work = project();
+          return args?.includePersonal ? [work, personal] : [work];
+        },
+        get: async ({ projectId }) => {
+          if (projectId === "personal") return { ...project("personal"), kind: "personal" as const, sources: [] };
+          return project();
+        },
+        create: async () => { throw new Error("unexpected"); },
+        update: async () => { throw new Error("unexpected"); },
+      },
+      hosts: { list: async () => [{ id: "host-project", name: "Execution machine", status: "connected" }] },
+      files: {
+        read: async ({ hostId, path }) => {
+          if (path.endsWith("bot.json")) {
+            return { content: JSON.stringify({ version: 1, role: "Chief of staff", avatar, mainThreadId: null, awaitingMain: false, sectionId: null, order: 0, updatedAt: 1 }), contentEncoding: "utf8", sha256: "x", sizeBytes: 1 };
+          }
+          throw new Error(`ENOENT: ${path}`);
+        },
+        write: async () => { throw new Error("unexpected"); },
+        mkdir: async () => { throw new Error("unexpected"); },
+      },
+      threads: { list: async () => [], get: async () => { throw new Error("unexpected"); }, spawn: async () => { throw new Error("unexpected"); } },
+    },
+  });
+  cleanups.push(() => host.harness.lifecycle.dispose());
+  await plugin(host.bb);
+  const before = await host.harness.behavior.callRpc("bots_list", null) as { bots: BotMetadata[] };
+  expect(before.bots).toEqual([]);
+  const migrate = await host.harness.behavior.runCli(["migrate-from", "bots-sidebar", "--json"]);
+  expect(migrate.exitCode).toBe(0);
+  const store = createBotStore(host.bb);
+  expect(store.list()).toHaveLength(1);
+  expect(store.owner("thread-1")).toBe("bot_sidebar");
+});
 
 it("imports bots-sidebar storage once and records migration metadata", async () => {
   const dataDir = mkdtempSync(join(tmpdir(), "bots-migrate-"));
