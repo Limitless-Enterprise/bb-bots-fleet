@@ -29,8 +29,13 @@ it("matches names, roles and IDs without requiring project membership", async ()
 });
 
 it("supports @bots discovery, includes hidden bots and disambiguates duplicate names", async () => {
-  const host = await setup(); const a = await host.create("Atlas", []); const b = await host.create("Atlas", []);
-  host.store.mutate(b.id, current => ({ ...current, hiddenUntilActivity: true, hiddenAt: Date.now() }));
+  const host = await setup();
+  const a = await host.create("Atlas", []);
+  host.store.nodes.save({ id: "node_billing", kind: "app", name: "billing", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 1 });
+  host.store.save({ ...host.store.require(a.id), nodeId: "node_billing" });
+  const b = await host.create("Beryl", []);
+  host.store.nodes.save({ id: "node_payments", kind: "app", name: "payments", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 2 });
+  host.store.save({ ...host.store.require(b.id), nodeId: "node_payments", name: "Atlas", hiddenUntilActivity: true, hiddenAt: Date.now() });
   const items = await provider(host).search(context("bots"));
   expect(items.map(item => item.id)).toEqual([a.id, b.id]);
   expect(items[0]?.subtitle).not.toEqual(items[1]?.subtitle);
@@ -75,7 +80,13 @@ it("keeps bots without a main referenceable without starting a conversation", as
 });
 
 it("rejects a stale/deleted identity rather than silently choosing a namesake", async () => {
-  const host = await setup(); const a = await host.create("Atlas", []); const b = await host.create("Atlas", []);
+  const host = await setup();
+  const a = await host.create("Atlas", []);
+  host.store.nodes.save({ id: "node_billing", kind: "app", name: "billing", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 1 });
+  host.store.save({ ...host.store.require(a.id), nodeId: "node_billing" });
+  const b = await host.create("Beryl", []);
+  host.store.nodes.save({ id: "node_payments", kind: "app", name: "payments", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 2 });
+  host.store.save({ ...host.store.require(b.id), nodeId: "node_payments", name: "Atlas" });
   host.bb.storage.database().prepare("DELETE FROM bots WHERE id=?").run(a.id);
   expect(() => provider(host).resolve(a.id)).toThrow(/no longer exists/);
   expect(provider(host).resolve(b.id)).toBeTruthy();

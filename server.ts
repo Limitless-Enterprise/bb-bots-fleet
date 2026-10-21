@@ -215,7 +215,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
   bb.events.on("thread.created", async ({ thread }) => { await routeNewThread(thread, true); });
 
-  registerBotsCli(bb, store, memory, resolveOwner);
+  registerBotsCli(bb, store, memory, resolveOwner, ops);
   registerBotMentions(bb, store);
 
   bb.rpc.register(rpcContract, {

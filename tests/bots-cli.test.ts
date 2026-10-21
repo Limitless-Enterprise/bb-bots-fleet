@@ -111,8 +111,12 @@ it("refreshes project state after ownership changes and configures the bound mem
 });
 it("rejects duplicate names and empty conversation lists without routing side effects",async () => {
   const {host,a,b,run,send}=await setup();
-  host.store.save({...host.store.require(b.id),name:a.name});
-  expect((await run(["message",a.name,"Hi"])).stderr).toContain("Several bots");
+  expect(() => host.store.save({...host.store.require(b.id),name:a.name})).toThrow(/Duplicate bot address/);
+  host.store.nodes.save({ id: "node_app1", kind: "app", name: "billing", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 1 });
+  host.store.nodes.save({ id: "node_app2", kind: "app", name: "payments", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 2 });
+  host.store.save({ ...host.store.require(a.id), nodeId: "node_app1" });
+  host.store.save({ ...host.store.require(b.id), nodeId: "node_app2", name: a.name });
+  expect((await run(["message",a.name,"Hi"])).stderr).toContain("billing/Atlas");
   host.store.save({...host.store.require(b.id),mainThreadId:null});
   host.threads.delete(b.id);
   expect((await run(["message",b.id,"Hi"])).stderr).toContain("no visible conversation");

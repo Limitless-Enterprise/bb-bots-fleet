@@ -25,6 +25,8 @@ export const metadataSchema = z.object({
   threadOrder: z.array(id).optional(),
   launchPreset: launchPresetSchema.nullable().optional(),
   sectionId: id.nullable(), order: z.number().int().nonnegative(),
+  nodeId: id.nullable().optional(),
+  parentBotId: id.nullable().optional(),
   // agents and its hash are archived compatibility data, never injected or editable.
   // Keep the old read limit so oversized existing memory can be read and condensed.
   soul: z.string().max(4096), agents: z.string().max(4096), memory: z.string().max(16384), settings: z.record(z.string(), z.json()),
