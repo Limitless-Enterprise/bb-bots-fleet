@@ -148,6 +148,13 @@ async function runShow(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, s
   const section = bot.sectionId ? store.sections().find((entry) => entry.id === bot.sectionId)?.name ?? null : null;
   const { activity, firstThreads } = await listBotCliActivity(bb, store, resolveOwner, ctx);
   const mainThreadId = firstThreads.get(bot.id) ?? null;
+  const main = mainThreadId
+    ? await bb.sdk.threads.get({ threadId: mainThreadId }).then((thread) => ({
+        threadId: mainThreadId,
+        projectId: thread.projectId ?? null,
+        archived: Boolean(thread.archivedAt),
+      }))
+    : null;
   const payload = {
     id: bot.id,
     name: botAddress(nodes, bot),
@@ -159,7 +166,7 @@ async function runShow(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, s
     memory: memory.stats(bot.id),
     launchPreset: bot.launchPreset ?? null,
     projects: bot.linkedProjectIds.map((id) => ({ id, name: projects.get(id) ?? "Unavailable project", role: owned.includes(id) ? "owner" as const : "member" as const })),
-    main: mainThreadId ? { threadId: mainThreadId, projectId: null, archived: false } : null,
+    main,
     status: activity.get(bot.id) ?? "idle",
     nodePath: nodeDisplayPath(nodes, bot.nodeId ?? null),
     parentBotId: bot.parentBotId ?? null,
