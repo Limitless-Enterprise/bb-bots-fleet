@@ -112,7 +112,7 @@ export function createBotOps(deps: BotOpsDeps) {
     });
   }
 
-  async function updateBot(botId: string, patch: Partial<{ name: string; role: string; soul: string; hostId: string; sectionId: string | null; parentBotId: string | null }>) {
+  async function updateBot(botId: string, patch: Partial<{ name: string; role: string; soul: string; hostId: string; sectionId: string | null; parentBotId: string | null; launchPreset: BotMetadata["launchPreset"] }>) {
     return serial("registry", () => serial(botId, async () => {
       const bot = await state.prepare(botId);
       if (patch.hostId !== undefined && patch.hostId !== bot.hostId && !(await bb.sdk.hosts.list()).some((host) => host.id === patch.hostId)) throw new Error("Choose an enrolled execution machine");
@@ -128,6 +128,7 @@ export function createBotOps(deps: BotOpsDeps) {
           ...(patch.sectionId !== undefined ? { sectionId: patch.sectionId } : {}),
           ...(patch.parentBotId !== undefined ? { parentBotId: patch.parentBotId } : {}),
           ...(patch.soul !== undefined ? { soul: patch.soul } : {}),
+          ...(patch.launchPreset !== undefined ? { launchPreset: patch.launchPreset } : {}),
           stateHashes: soulChanged ? { ...current.stateHashes, "SOUL.md": sha256(soul) } : current.stateHashes,
           updatedAt: nextTimestamp(current.updatedAt),
         };

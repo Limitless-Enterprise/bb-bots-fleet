@@ -73,8 +73,15 @@ export function nodePathSegments(path: string): string[] {
   const trimmed = path.trim().replace(/^\/+|\/+$/g, "");
   if (!trimmed) throw new Error("Node path is required");
   const parts = trimmed.split("/").map((part) => part.trim()).filter(Boolean);
-  if (!parts.length || parts.some((part) => part.length > 120)) throw new Error("Invalid node path");
+  if (!parts.length || parts.some((part) => part.length > 120 || part.includes("/"))) throw new Error("Invalid node path");
   return parts;
+}
+
+export function appNodeIdForBot(nodes: BotNode[], bot: Pick<BotMetadata, "nodeId">): string | null {
+  if (!bot.nodeId) return null;
+  let current = nodes.find((node) => node.id === bot.nodeId) ?? null;
+  while (current?.parentNodeId) current = nodes.find((node) => node.id === current!.parentNodeId) ?? null;
+  return current?.kind === "app" ? current.id : null;
 }
 
 export function resolveNodePath(nodes: BotNode[], path: string): BotNode {
@@ -106,15 +113,25 @@ export function validateBotRegistry(nodes: BotNode[], bots: BotMetadata[]) {
   const byId = new Map(bots.map((bot) => [bot.id, bot]));
   const keyed = new Map<string, BotMetadata>();
   for (const bot of bots) {
+    if (bot.name.includes("/")) throw new Error(`Bot name must not contain '/': ${bot.name}`);
     const nodeId = bot.nodeId ?? null;
-    const key = nodeId ? `${nodeId}\0${bot.name}` : `\0shared\0${bot.name}`;
-    if (keyed.has(key)) throw new Error(`Duplicate bot address: ${bot.name}`);
-    keyed.set(key, bot);
+    if (nodeId) {
+      const key = `${nodeId}\0${bot.name}`;
+      if (keyed.has(key)) throw new Error(`Duplicate bot address: ${bot.name}`);
+      keyed.set(key, bot);
+      if (!nodes.some((node) => node.id === nodeId)) throw new Error(`Node not found for bot: ${bot.name}`);
+    }
     if (!nodeId && appNames.has(bot.name)) throw new Error(`Shared bot name collides with app node: ${bot.name}`);
+    if (!nodeId && (bot.parentBotId ?? null)) throw new Error("Shared bots cannot have a parent bot");
     const parentId = bot.parentBotId ?? null;
     if (parentId) {
       if (parentId === bot.id) throw new Error("Bot cannot be its own parent");
-      if (!byId.has(parentId)) throw new Error(`Parent bot not found: ${parentId}`);
+      const parent = byId.get(parentId);
+      if (!parent) throw new Error(`Parent bot not found: ${parentId}`);
+      if (parent.parentBotId ?? null) throw new Error("Parent must be the app lead");
+      const childApp = appNodeIdForBot(nodes, bot);
+      const parentApp = appNodeIdForBot(nodes, parent);
+      if (!childApp || !parentApp || childApp !== parentApp) throw new Error("Member parent must be the lead of the same app");
       let walk: string | null = parentId;
       while (walk) {
         if (walk === bot.id) throw new Error("Bot parent chain cannot cycle");

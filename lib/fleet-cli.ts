@@ -9,6 +9,8 @@ import type { createBotOps } from "./bot-ops";
 import { newNodeId, nodePathSegments, nodeDisplayPath, resolveNodePath, type BotNode, type BotNodeMetadata } from "./bot-nodes";
 import { listBotCliActivity } from "./bot-cli-activity";
 import { botAddress, parentBotLabel, resolveBotSelector, resolveMachine, resolveProject } from "./fleet-resolve";
+import { assertFleetRegistryOperator, assertFleetSoulMutationFromThread, isFleetSteward } from "./fleet-authz";
+import { parseLaunchPresetFromFlags, rejectSlashInName } from "./fleet-launch-flags";
 
 const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
 const printable = (value: string) => value.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
@@ -67,15 +69,41 @@ async function machineId(bb: BbPluginApi, selector: string) {
   return (await resolveMachine(bb, selector)).id;
 }
 
+function callerBot(ctx: PluginCliContext, store: BotStore): BotMetadata | null {
+  const threadId = ctx.threadId;
+  if (!threadId) return null;
+  const botId = store.owner(threadId);
+  return botId ? store.get(botId) : null;
+}
+
 export async function runFleetCommand(command: string, argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, memory: BotMemory): Promise<{ exitCode: number; stdout?: string; stderr?: string }> {
   try {
-    if (command === "node") return await runNode(argv, ctx, bb, store);
+    const caller = callerBot(ctx, store);
+    if (command === "node") {
+      assertFleetRegistryOperator(ctx, caller);
+      return await runNode(argv, ctx, bb, store);
+    }
     if (command === "show") return await runShow(argv, ctx, bb, store, resolveOwner, memory);
-    if (command === "create") return await runCreate(argv, ctx, bb, store, ops);
-    if (command === "update") return await runUpdate(argv, ctx, bb, store, ops);
-    if (command === "link") return await runLink(argv, ctx, bb, store, ops, "link");
-    if (command === "unlink") return await runLink(argv, ctx, bb, store, ops, "unlink");
-    if (command === "release") return await runLink(argv, ctx, bb, store, ops, "release");
+    if (command === "create") {
+      assertFleetRegistryOperator(ctx, caller);
+      return await runCreate(argv, ctx, bb, store, ops, caller);
+    }
+    if (command === "update") {
+      assertFleetRegistryOperator(ctx, caller);
+      return await runUpdate(argv, ctx, bb, store, ops, caller);
+    }
+    if (command === "link") {
+      assertFleetRegistryOperator(ctx, caller);
+      return await runLink(argv, ctx, bb, store, ops, "link");
+    }
+    if (command === "unlink") {
+      assertFleetRegistryOperator(ctx, caller);
+      return await runLink(argv, ctx, bb, store, ops, "unlink");
+    }
+    if (command === "release") {
+      assertFleetRegistryOperator(ctx, caller);
+      return await runLink(argv, ctx, bb, store, ops, "release");
+    }
     if (command === "tree") return await runTree(argv, ctx, store);
     throw new Error(`Unknown fleet command: ${command}`);
   } catch (error) {
@@ -183,12 +211,15 @@ async function runShow(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, s
   ].join("\n") };
 }
 
-async function runCreate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps) {
-  const { flags, json } = parseFlags(argv, new Set(["--name", "--role", "--machine", "--soul", "--soul-file", "--node", "--parent", "--project", "--as", "--section", "--json"]), "rest");
+async function runCreate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps, caller: BotMetadata | null) {
+  const { flags, json } = parseFlags(argv, new Set(["--name", "--role", "--machine", "--soul", "--soul-file", "--node", "--parent", "--project", "--as", "--section", "--provider", "--model", "--reasoning", "--permission", "--service-tier", "--workspace", "--starter-prompt", "--json"]), "rest");
   const name = String(flags.name ?? "");
   const role = String(flags.role ?? "");
   if (!name || !role) throw new Error("--name and --role are required");
+  rejectSlashInName(name);
+  assertFleetSoulMutationFromThread(ctx, caller, true);
   const soul = readSoul(flags, ctx.cwd ?? "/");
+  const launchPreset = parseLaunchPresetFromFlags(flags);
   const hostId = await machineId(bb, String(flags.machine ?? ""));
   let nodeId: string | null = null;
   if (flags.node) {
@@ -212,25 +243,34 @@ async function runCreate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi,
     if (!existing) throw new Error(`Section not found: ${name}`);
     sectionId = existing.id;
   }
-  const created = await ops.createBot({ name, role, hostId, avatar: defaultAvatar(), sectionId, linkedProjectIds, ownedProjectIds, soul, nodeId, parentBotId });
+  const created = await ops.createBot({ name, role, hostId, avatar: defaultAvatar(), sectionId, linkedProjectIds, ownedProjectIds, soul, nodeId, parentBotId, ...(launchPreset !== undefined ? { launchPreset } : {}) });
   const out = { bot: created, address: botAddress(store.nodes.list(), created) };
   return { exitCode: 0, stdout: json ? JSON.stringify(out) : `Created ${out.address} (${created.id})` };
 }
 
-async function runUpdate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps) {
-  const { flags, positional, json } = parseFlags(argv, new Set(["--name", "--role", "--soul", "--soul-file", "--machine", "--parent", "--no-parent", "--section", "--no-section", "--json"]), 1);
+async function runUpdate(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps, caller: BotMetadata | null) {
+  const { flags, positional, json } = parseFlags(argv, new Set(["--name", "--role", "--soul", "--soul-file", "--machine", "--parent", "--no-parent", "--section", "--no-section", "--provider", "--model", "--reasoning", "--permission", "--service-tier", "--workspace", "--starter-prompt", "--json"]), 1);
   const bot = resolveBotSelector(store, positional[0]!);
+  const launchPreset = parseLaunchPresetFromFlags(flags, bot.launchPreset ?? null);
   const hasUpdateFlag = Boolean(
     flags.name || flags.role || flags.soul || flags["soul-file"] || flags.machine ||
-    flags.parent || flags["no-parent"] || flags.section || flags["no-section"],
+    flags.parent || flags["no-parent"] || flags.section || flags["no-section"] ||
+    launchPreset !== undefined,
   );
-  const patch: Partial<{ name: string; role: string; soul: string; hostId: string; sectionId: string | null; parentBotId: string | null }> = {};
-  if (flags.name) patch.name = String(flags.name);
+  const patch: Partial<{ name: string; role: string; soul: string; hostId: string; sectionId: string | null; parentBotId: string | null; launchPreset: BotMetadata["launchPreset"] }> = {};
+  if (flags.name) {
+    rejectSlashInName(String(flags.name));
+    patch.name = String(flags.name);
+  }
   if (flags.role) patch.role = String(flags.role);
   if (flags.soul || flags["soul-file"]) {
     const soul = readSoul(flags, ctx.cwd ?? "/");
-    if (sha256(soul) !== sha256(bot.soul)) patch.soul = soul;
+    if (sha256(soul) !== sha256(bot.soul)) {
+      assertFleetSoulMutationFromThread(ctx, caller, true);
+      patch.soul = soul;
+    }
   }
+  if (launchPreset !== undefined) patch.launchPreset = launchPreset;
   if (flags.machine) patch.hostId = await machineId(bb, String(flags.machine));
   if (flags["no-parent"]) patch.parentBotId = null;
   else if (flags.parent) patch.parentBotId = resolveBotSelector(store, String(flags.parent)).id;

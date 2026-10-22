@@ -49,6 +49,44 @@ describe("fleet cli", () => {
     expect((await run(["message", "architect", "hi"])).exitCode).toBe(0);
   });
 
+  it("allows legacy duplicate shared names and rejects slash in bot names", async () => {
+    const { host, run } = await setup();
+    await run(["create", "--name", "dup", "--role", "A", "--machine", "Execution machine", "--soul", "a"]);
+    await run(["create", "--name", "dup", "--role", "B", "--machine", "Execution machine", "--soul", "b"]);
+    expect(host.store.list().filter((bot) => bot.name === "dup")).toHaveLength(2);
+    const bad = await run(["create", "--name", "bad/name", "--role", "X", "--machine", "Execution machine", "--soul", "x"]);
+    expect(bad.exitCode).toBe(1);
+    expect(bad.stderr).toMatch(/\//);
+  });
+
+  it("stores launch preset flags on create", async () => {
+    const { host, run } = await setup();
+    await run(["create", "--name", "preset", "--role", "R", "--machine", "Execution machine", "--soul", "s",
+      "--provider", "test-harness", "--model", "example", "--reasoning", "high", "--permission", "auto", "--workspace", "worktree", "--starter-prompt", "Go"]);
+    const bot = host.store.list().find((entry) => entry.name === "preset")!;
+    expect(bot.launchPreset).toMatchObject({ workspace: "worktree", initialPrompt: "Go", execution: { providerId: "test-harness", model: "example", reasoningLevel: "high", permissionMode: "auto" } });
+  });
+
+  it("refuses fleet registry mutations from non-steward threads", async () => {
+    const { host, run } = await setup();
+    await run(["create", "--name", "fleet", "--role", "Steward", "--machine", "Execution machine", "--soul", "steward"]);
+    await run(["create", "--name", "worker", "--role", "W", "--machine", "Execution machine", "--soul", "w"]);
+    const worker = host.store.list().find((bot) => bot.name === "worker")!;
+    host.threads.set("worker-thread", makeThreadResponse({ id: "worker-thread", projectId: "project" }));
+    host.store.bind("worker-thread", worker.id);
+    const blocked = await run(["update", worker.id, "--role", "Changed"], { threadId: "worker-thread" });
+    expect(blocked.exitCode).toBe(1);
+    expect(blocked.stderr).toContain("operator-only");
+    const fleet = host.store.list().find((bot) => bot.name === "fleet")!;
+    host.threads.set("fleet-thread", makeThreadResponse({ id: "fleet-thread", projectId: "project" }));
+    host.store.bind("fleet-thread", fleet.id);
+    expect((await run(["update", worker.id, "--role", "Steward ok"], { threadId: "fleet-thread" })).exitCode).toBe(0);
+    const soulBlock = await run(["update", worker.id, "--soul", "hijacked"], { threadId: "worker-thread" });
+    expect(soulBlock.exitCode).toBe(1);
+    expect(soulBlock.stderr).toContain("operator-only");
+    expect((await run(["update", worker.id, "--soul", "steward soul"], { threadId: "fleet-thread" })).exitCode).toBe(0);
+  });
+
   it("links and releases project ownership", async () => {
     const { run } = await setup();
     await run(["create", "--name", "owner", "--role", "Owner", "--machine", "Execution machine", "--soul", "x", "--project", "project", "--as", "owner"]);

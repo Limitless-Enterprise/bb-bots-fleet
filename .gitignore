@@ -1,3 +1,7 @@
 node_modules
 .npm-cache
 dist
+package-lock.json
+yarn.lock
+bun.lockb
+.bb-live-test/

@@ -225,7 +225,7 @@ or reintroduce hover toolbars when making unrelated changes.
 - Chats is a collapsible, vertically resizable bottom section. Keep its size and
   collapsed state per client; the hidden-bot toggle belongs below the bot list,
   not in the Bots heading. Do not reintroduce the per-row activity dates.
-- Before reloading, run `npm run typecheck`, `npm test`, and `bb plugin build`.
+- Before reloading, run `pnpm typecheck`, `pnpm test`, and `bb plugin build`.
   `tests/sidebar-ux.test.tsx` protects the approved interactions, not just markup.
   For visual changes also check the live UI on hover, menu open, and edit open.
 
