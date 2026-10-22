@@ -16,7 +16,16 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version-file: .node-version
+
+      - name: Reject alternate lockfiles
+        run: |
+          for f in package-lock.json yarn.lock bun.lockb; do
+            if [ -e "$f" ]; then
+              echo "Forbidden lockfile present: $f"
+              exit 1
+            fi
+          done
 
       - name: Enable Corepack and install dependencies
         run: |
