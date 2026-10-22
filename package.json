@@ -2,6 +2,7 @@
   "name": "bb-plugin-bots-fleet",
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.13.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Limitless-Enterprise/bb-bots-fleet.git"
@@ -12,8 +13,14 @@
     "build": "bb plugin build"
   },
   "engines": {
+    "node": ">=24",
     "bb": ">=0.46.1",
     "bbPluginSdk": ">=0.6.49"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   },
   "bb": {
     "name": "Bots Fleet",

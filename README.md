@@ -309,9 +309,9 @@ Use BB 0.46.1 or newer and Node.js 24. No BB-core change is required for this mo
 ```sh
 git clone --branch main https://github.com/Limitless-Enterprise/bb-bots-fleet.git
 cd bb-bots-fleet
-npm ci
-npm run typecheck
-npm test
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
 bb plugin build
 bb plugin install . --yes
 ```
