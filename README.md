@@ -304,11 +304,13 @@ switching storage versions; the prior code checkpoint is
 
 ## Develop
 
-Use BB 0.46.1 or newer and Node.js 24. No BB-core change is required for this model.
+Use BB 0.46.1 or newer, Node.js per `.node-version`, and pnpm via Corepack
+(`packageManager` in `package.json`). No BB-core change is required for this model.
 
 ```sh
 git clone --branch main https://github.com/Limitless-Enterprise/bb-bots-fleet.git
 cd bb-bots-fleet
+corepack enable
 pnpm install --frozen-lockfile
 pnpm typecheck
 pnpm test
