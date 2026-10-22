@@ -30,6 +30,8 @@ export const FLEET_COMMANDS = [
 
 type FlagMap = Record<string, string | boolean>;
 
+const BOOLEAN_CLI_FLAGS = new Set(["--json", "--no-parent", "--no-section"]);
+
 function parseFlags(argv: string[], allowed: Set<string>, positionalCount: number | "rest") {
   const flags: FlagMap = {};
   const positional: string[] = [];
@@ -38,7 +40,13 @@ function parseFlags(argv: string[], allowed: Set<string>, positionalCount: numbe
     const arg = argv[i]!;
     if (arg === "--") { positional.push(...argv.slice(i + 1)); break; }
     if (!arg.startsWith("--")) { positional.push(arg); continue; }
-    if (arg === "--json") { flags.json = true; continue; }
+    if (BOOLEAN_CLI_FLAGS.has(arg)) {
+      if (seen.has(arg)) throw new Error(`Repeated option: ${arg}`);
+      seen.add(arg);
+      if (!allowed.has(arg)) throw new Error(`Unknown option: ${arg}`);
+      flags[arg.slice(2)] = true;
+      continue;
+    }
     if (seen.has(arg)) throw new Error(`Repeated option: ${arg}`);
     seen.add(arg);
     if (!allowed.has(arg)) throw new Error(`Unknown option: ${arg}`);

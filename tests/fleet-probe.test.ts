@@ -104,7 +104,7 @@ describe("fleet probes (reviewer BLOCK)", () => {
     await run(["create", "--name", "lead", "--role", "Lead", "--machine", "Execution machine", "--soul", "l", "--node", "billing"]);
     const rogue = await run(["create", "--name", "rogue", "--role", "Rogue", "--machine", "Execution machine", "--soul", "r", "--node", "billing"]);
     expect(rogue.exitCode).toBe(1);
-    expect(rogue.stderr).toMatch(/lead bot/i);
+    expect(rogue.stderr).toMatch(/lead/i);
   });
 
   it("round2 schema nodes accept only data bots", async () => {
@@ -116,6 +116,29 @@ describe("fleet probes (reviewer BLOCK)", () => {
     expect(ui.exitCode).toBe(1);
     expect(ui.stderr).toMatch(/data bots/i);
     expect((await run(["create", "--name", "data", "--role", "Data", "--machine", "Execution machine", "--soul", "d", "--node", "billing/ledger", "--parent", "billing/lead"])).exitCode).toBe(0);
+  });
+
+  it("round3 app lead must be named lead and cannot be renamed", async () => {
+    const { run } = await setup();
+    await run(["node", "create", "billing", "--kind", "app"]);
+    const badLead = await run(["create", "--name", "boss", "--role", "Lead", "--machine", "Execution machine", "--soul", "l", "--node", "billing"]);
+    expect(badLead.exitCode).toBe(1);
+    expect(badLead.stderr).toMatch(/named lead/i);
+    await run(["create", "--name", "lead", "--role", "Lead", "--machine", "Execution machine", "--soul", "l", "--node", "billing"]);
+    const secondRoot = await run(["create", "--name", "ui", "--role", "UI", "--machine", "Execution machine", "--soul", "u", "--node", "billing"]);
+    expect(secondRoot.exitCode).toBe(1);
+    const rename = await run(["update", "billing/lead", "--name", "boss"]);
+    expect(rename.exitCode).toBe(1);
+    expect(rename.stderr).toMatch(/cannot be renamed/i);
+  });
+
+  it("round3 --no-parent is a boolean flag and cannot unpinned members", async () => {
+    const { run } = await setup();
+    await run(["node", "create", "billing", "--kind", "app"]);
+    await run(["create", "--name", "lead", "--role", "Lead", "--machine", "Execution machine", "--soul", "l", "--node", "billing"]);
+    await run(["create", "--name", "ui", "--role", "UI", "--machine", "Execution machine", "--soul", "u", "--node", "billing", "--parent", "billing/lead"]);
+    expect((await run(["update", "billing/ui", "--no-parent"])).exitCode).toBe(1);
+    expect((await run(["update", "billing/ui", "--no-parent", "--json"])).stderr).toMatch(/remove parent/i);
   });
 
   it("6 tree marks engaged shared bots", async () => {

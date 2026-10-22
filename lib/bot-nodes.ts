@@ -119,9 +119,23 @@ export function validateBotSave(nodes: BotNode[], bot: BotMetadata, peers: BotMe
     const node = nodes.find((entry) => entry.id === nodeId);
     if (!node) throw new Error(`Node not found for bot: ${bot.name}`);
     validateBotPlacement(nodes, bot, peers, node);
-    if (node.kind === "app" && !(bot.parentBotId ?? null)) {
-      const existingLead = peers.find((peer) => (peer.nodeId ?? null) === nodeId && !(peer.parentBotId ?? null));
-      if (existingLead) throw new Error("App node already has a lead bot; members must use --parent <app>/lead");
+    if (node.kind === "app") {
+      const unparented = !(bot.parentBotId ?? null);
+      const wasUnparentedLead = previous && !(previous.parentBotId ?? null) && (previous.nodeId ?? null) === nodeId;
+      const hadParent = previous?.parentBotId ?? null;
+      if (hadParent && !(bot.parentBotId ?? null)) {
+        throw new Error("Cannot remove parent from an app member bot");
+      }
+      if (wasUnparentedLead && nameChanged && previous!.name === "lead" && bot.name !== "lead") {
+        throw new Error("App lead bot cannot be renamed");
+      }
+      if (unparented) {
+        if (bot.name !== "lead") {
+          throw new Error("Unparented app-node bot must be named lead; members must use --parent <app>/lead");
+        }
+        const existingLead = peers.find((peer) => (peer.nodeId ?? null) === nodeId && !(peer.parentBotId ?? null));
+        if (existingLead) throw new Error("App node already has a lead bot; members must use --parent <app>/lead");
+      }
     }
     if (nameChanged || nodeChanged) {
       if (peers.some((peer) => (peer.nodeId ?? null) === nodeId && peer.name === bot.name)) {
