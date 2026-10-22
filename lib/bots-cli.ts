@@ -102,6 +102,7 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
       try {
         if (argv[0] === "memory") return await runBotsMemoryCommand(argv.slice(1), ctx, store, memory);
         if (argv[0] === "migrate-from") {
+          if (ctx.threadId) throw new Error("bb bots migrate-from is operator-only and cannot run from a BB thread");
           const json = argv.includes("--json");
           const source = argv.find((arg) => arg !== "migrate-from" && arg !== "--json" && !arg.startsWith("--"));
           if (!source || argv.some((arg) => arg.startsWith("--") && arg !== "--json")) {

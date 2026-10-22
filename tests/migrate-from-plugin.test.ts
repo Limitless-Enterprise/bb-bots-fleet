@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, expect, it } from "vitest";
@@ -85,9 +85,10 @@ it("defers v1 project import until bots-sidebar storage is migrated", async () =
   const store = createBotStore(host.bb);
   expect(store.list()).toHaveLength(1);
   expect(store.owner("thread-1")).toBe("bot_sidebar");
-  const after = await host.harness.behavior.callRpc("bots_list", null) as { bots: BotMetadata[] };
-  expect(after.bots).toHaveLength(1);
-  expect(after.bots[0]!.id).toBe("bot_sidebar");
+  const after = await host.harness.behavior.callRpc("bots_list", null) as { bots: BotMetadata[]; warnings: string[] };
+  const sidebar = after.bots.find((bot) => bot.id === "bot_sidebar");
+  expect(sidebar).toBeDefined();
+  expect(after.warnings.join(" ")).not.toContain("migrate-from bots-sidebar");
 });
 
 it("imports bots-sidebar storage once and records migration metadata", async () => {
@@ -140,6 +141,89 @@ it("refuses migration while bots-sidebar is enabled or pending starts remain", a
   cleanups.push(() => host2.harness.lifecycle.dispose());
   await plugin(host2.bb);
   expect((await host2.harness.behavior.runCli(["migrate-from", "bots-sidebar"])).stderr).toContain("pending conversation starts");
+});
+
+it("refuses migrate-from from a BB thread (operator-only)", async () => {
+  const host = await backend();
+  cleanups.push(() => host.harness.lifecycle.dispose());
+  const fromThread = await host.harness.behavior.runCli(["migrate-from", "bots-sidebar"], { threadId: "operator-thread" });
+  expect(fromThread.exitCode).toBe(1);
+  expect(fromThread.stderr).toMatch(/operator-only/i);
+});
+
+it("ignores an empty bots-sidebar database when deferring legacy import", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "bots-migrate-"));
+  cleanups.push(() => rmSync(dataDir, { recursive: true, force: true }));
+  const sidebarDir = join(dataDir, "plugins", "bots-sidebar");
+  mkdirSync(sidebarDir, { recursive: true });
+  const db = new Database(join(sidebarDir, "data.db"));
+  db.exec(`
+    CREATE TABLE bots (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE bot_threads (thread_id TEXT PRIMARY KEY, bot_id TEXT NOT NULL);
+    CREATE TABLE bot_state (key TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE bot_starts (token TEXT PRIMARY KEY, bot_id TEXT NOT NULL, created_at INTEGER NOT NULL, project_id TEXT);
+    CREATE TABLE bot_project_owners (project_id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, assigned_at INTEGER NOT NULL);
+  `);
+  db.close();
+  const host = createFakePluginHost({
+    pluginId: "bots-fleet",
+    dataDir,
+    sdk: {
+      plugins: { list: async () => ({ plugins: [{ id: "bots-sidebar", enabled: false }] }) },
+      projects: {
+        list: async (args) => {
+          const personal = { ...project("personal"), kind: "personal" as const, sources: [] };
+          const work = project();
+          return args?.includePersonal ? [work, personal] : [work];
+        },
+        get: async ({ projectId }) => {
+          if (projectId === "personal") return { ...project("personal"), kind: "personal" as const, sources: [] };
+          return project();
+        },
+        create: async () => { throw new Error("unexpected"); },
+        update: async () => { throw new Error("unexpected"); },
+      },
+      hosts: { list: async () => [{ id: "host-project", name: "Execution machine", status: "connected" }] },
+      files: {
+        read: async () => { throw new Error("ENOENT"); },
+        write: async () => { throw new Error("unexpected"); },
+        mkdir: async () => { throw new Error("unexpected"); },
+      },
+      threads: { list: async () => [], get: async () => { throw new Error("unexpected"); }, spawn: async () => { throw new Error("unexpected"); } },
+    },
+  });
+  cleanups.push(() => host.harness.lifecycle.dispose());
+  await plugin(host.bb);
+  const list = await host.harness.behavior.callRpc("bots_list", null) as { warnings: string[] };
+  expect(list.warnings.join(" ")).not.toContain("migrate-from bots-sidebar");
+  const created = await host.harness.behavior.callRpc("bot_create", {
+    name: "Fresh bot", role: "Helper", hostId: "host-project", avatar, sectionId: null, linkedProjectIds: ["project"], soul: "Allowed",
+  }) as BotMetadata;
+  expect(created.name).toBe("Fresh bot");
+});
+
+it("does not copy sidebar state when database import fails", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "bots-migrate-"));
+  cleanups.push(() => rmSync(dataDir, { recursive: true, force: true }));
+  const sidebarDir = join(dataDir, "plugins", "bots-sidebar");
+  mkdirSync(sidebarDir, { recursive: true });
+  seedSidebarDatabase(sidebarDir);
+  const db = new Database(join(sidebarDir, "data.db"));
+  db.prepare("INSERT INTO bot_starts(token,bot_id,created_at,project_id) VALUES (?,?,?,?)").run("blocked", "bot_sidebar", Date.now(), "project");
+  db.close();
+  const host = createFakePluginHost({
+    pluginId: "bots-fleet",
+    dataDir,
+    sdk: { plugins: { list: async () => ({ plugins: [{ id: "bots-sidebar", enabled: false }] }) } },
+  });
+  cleanups.push(() => host.harness.lifecycle.dispose());
+  await plugin(host.bb);
+  const result = await host.harness.behavior.runCli(["migrate-from", "bots-sidebar"]);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("pending conversation starts");
+  const fleetState = join(dataDir, "plugins", "bots-fleet", "state", "bot_sidebar", "SOUL.md");
+  expect(existsSync(fleetState)).toBe(false);
+  expect(createBotStore(host.bb).state(PLUGIN_MIGRATION_STATE_KEY)).toBeNull();
 });
 
 it("finishes pending starts and routes threads created under bots-sidebar origin", async () => {

@@ -1,3 +1,4 @@
+import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -21,9 +22,24 @@ export const SIDEBAR_MIGRATION_PENDING_WARNING =
 export const SIDEBAR_MIGRATION_PENDING_CREATE_ERROR =
   "Complete sidebar migration first: run `bb bots migrate-from bots-sidebar` before creating bots here.";
 
+function sidebarSourceHasBotData(sourceDir: string) {
+  const dbPath = join(sourceDir, "data.db");
+  if (!existsSync(dbPath)) return false;
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const bots = (db.prepare("SELECT COUNT(*) AS count FROM bots").get() as { count: number }).count;
+    const bindings = (db.prepare("SELECT COUNT(*) AS count FROM bot_threads").get() as { count: number }).count;
+    return bots > 0 || bindings > 0;
+  } catch {
+    return false;
+  } finally {
+    db.close();
+  }
+}
+
 export function sidebarMigrationPending(bb: BbPluginApi, store: BotStore) {
   if (store.state(PLUGIN_MIGRATION_STATE_KEY)) return false;
-  return existsSync(join(pluginDataDirectory(bb, BOTS_SIDEBAR_ORIGIN), "data.db"));
+  return sidebarSourceHasBotData(pluginDataDirectory(bb, BOTS_SIDEBAR_ORIGIN));
 }
 export function createLegacyImporter(bb: BbPluginApi, store: BotStore) {
   let inFlight: Promise<string[]> | null = null;
@@ -47,7 +63,7 @@ export function createLegacyImporter(bb: BbPluginApi, store: BotStore) {
       const project = projects.find((project) => project.id === projectId);
       if (!project) { snapshot.done.push(projectId); store.setState("legacy-snapshot", snapshot); continue; }
       try {
-        let bot = store.list().find((bot) => bot.legacyProjectId === projectId || bot.linkedProjectIds.includes(projectId));
+        let bot = store.list().find((bot) => bot.legacyProjectId === projectId);
         if (!bot) {
           const source = project.sources.find((source) => source.isDefault) ?? project.sources[0];
           if (!source) throw new Error("No project source is available");

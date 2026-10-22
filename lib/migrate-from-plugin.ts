@@ -26,6 +26,14 @@ function copyTable(legacy: Database.Database, target: Database.Database, table: 
   for (const row of rows) insert.run(...columns.map((column) => row[column]));
 }
 
+function snapshotSourceDatabase(sourceDbPath: string, scratchDb: string) {
+  copyFileSync(sourceDbPath, scratchDb);
+  for (const suffix of ["-wal", "-shm"] as const) {
+    const sidecar = `${sourceDbPath}${suffix}`;
+    if (existsSync(sidecar)) copyFileSync(sidecar, `${scratchDb}${suffix}`);
+  }
+}
+
 export async function migrateFromPlugin(bb: BbPluginApi, store: BotStore, sourcePluginId: string): Promise<MigrateFromResult> {
   if (!SUPPORTED_SOURCES.has(sourcePluginId)) throw new Error(`Unsupported source plugin: ${sourcePluginId}`);
   if (store.state<{ sourcePluginId: string }>(PLUGIN_MIGRATION_STATE_KEY)) {
@@ -45,34 +53,35 @@ export async function migrateFromPlugin(bb: BbPluginApi, store: BotStore, source
   if (!existsSync(sourceDbPath)) throw new Error(`No plugin data found for ${sourcePluginId} at ${sourceDir}`);
   const scratchDir = mkdtempSync(join(tmpdir(), "bots-fleet-migrate-"));
   const scratchDb = join(scratchDir, "source.db");
-  copyFileSync(sourceDbPath, scratchDb);
-  const legacy = new Database(scratchDb, { readonly: true });
-  const pending = (legacy.prepare("SELECT COUNT(*) AS count FROM bot_starts").get() as { count: number }).count;
-  if (pending > 0) {
-    legacy.close();
+  let legacy: Database.Database | null = null;
+  try {
+    snapshotSourceDatabase(sourceDbPath, scratchDb);
+    legacy = new Database(scratchDb, { readonly: true });
+    const pending = (legacy.prepare("SELECT COUNT(*) AS count FROM bot_starts").get() as { count: number }).count;
+    if (pending > 0) throw new Error("Resolve pending conversation starts in bots-sidebar before migrating");
+    const sourceState = join(sourceDir, "state");
+    const stateStaging = join(scratchDir, "state-staging");
+    if (existsSync(sourceState)) cpSync(sourceState, stateStaging, { recursive: true });
+    const migrationMeta = { sourcePluginId, migratedAt: Date.now(), sourceDatabase: sourceDbPath };
+    const target = bb.storage.database();
+    const summary = target.transaction(() => {
+      for (const table of DATA_TABLES) copyTable(legacy!, target, table);
+      const botCount = (target.prepare("SELECT COUNT(*) AS count FROM bots").get() as { count: number }).count;
+      const bindingCount = (target.prepare("SELECT COUNT(*) AS count FROM bot_threads").get() as { count: number }).count;
+      target.prepare("INSERT INTO bot_state(key,data) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET data=excluded.data").run(
+        PLUGIN_MIGRATION_STATE_KEY,
+        JSON.stringify(migrationMeta),
+      );
+      return { botCount, bindingCount };
+    }).immediate();
+    if (existsSync(stateStaging)) {
+      mkdirSync(join(targetDir, "state"), { recursive: true, mode: 0o700 });
+      cpSync(stateStaging, join(targetDir, "state"), { recursive: true, force: true });
+    }
+    const copiedStateBots = existsSync(stateStaging) ? summary.botCount : 0;
+    return { sourcePluginId, botCount: summary.botCount, bindingCount: summary.bindingCount, copiedStateBots };
+  } finally {
+    legacy?.close();
     rmSync(scratchDir, { recursive: true, force: true });
-    throw new Error("Resolve pending conversation starts in bots-sidebar before migrating");
   }
-  const sourceState = join(sourceDir, "state");
-  const copiedState = existsSync(sourceState);
-  if (copiedState) {
-    mkdirSync(join(targetDir, "state"), { recursive: true, mode: 0o700 });
-    cpSync(sourceState, join(targetDir, "state"), { recursive: true, force: true });
-  }
-  const migrationMeta = { sourcePluginId, migratedAt: Date.now(), sourceDatabase: sourceDbPath };
-  const target = bb.storage.database();
-  const summary = target.transaction(() => {
-    for (const table of DATA_TABLES) copyTable(legacy, target, table);
-    const botCount = (target.prepare("SELECT COUNT(*) AS count FROM bots").get() as { count: number }).count;
-    const bindingCount = (target.prepare("SELECT COUNT(*) AS count FROM bot_threads").get() as { count: number }).count;
-    target.prepare("INSERT INTO bot_state(key,data) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET data=excluded.data").run(
-      PLUGIN_MIGRATION_STATE_KEY,
-      JSON.stringify(migrationMeta),
-    );
-    return { botCount, bindingCount };
-  }).immediate();
-  legacy.close();
-  rmSync(scratchDir, { recursive: true, force: true });
-  const copiedStateBots = copiedState ? summary.botCount : 0;
-  return { sourcePluginId, botCount: summary.botCount, bindingCount: summary.bindingCount, copiedStateBots };
 }
