@@ -52,8 +52,7 @@ describe("fleet cli", () => {
   it("allows legacy duplicate shared names and rejects slash in bot names", async () => {
     const { host, run } = await setup();
     await run(["create", "--name", "dup", "--role", "A", "--machine", "Execution machine", "--soul", "a"]);
-    await run(["create", "--name", "dup", "--role", "B", "--machine", "Execution machine", "--soul", "b"]);
-    expect(host.store.list().filter((bot) => bot.name === "dup")).toHaveLength(2);
+    expect((await run(["create", "--name", "dup", "--role", "B", "--machine", "Execution machine", "--soul", "b"])).exitCode).toBe(1);
     const bad = await run(["create", "--name", "bad/name", "--role", "X", "--machine", "Execution machine", "--soul", "x"]);
     expect(bad.exitCode).toBe(1);
     expect(bad.stderr).toMatch(/\//);

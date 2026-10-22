@@ -119,6 +119,10 @@ export function validateBotSave(nodes: BotNode[], bot: BotMetadata, peers: BotMe
     const node = nodes.find((entry) => entry.id === nodeId);
     if (!node) throw new Error(`Node not found for bot: ${bot.name}`);
     validateBotPlacement(nodes, bot, peers, node);
+    if (node.kind === "app" && !(bot.parentBotId ?? null)) {
+      const existingLead = peers.find((peer) => (peer.nodeId ?? null) === nodeId && !(peer.parentBotId ?? null));
+      if (existingLead) throw new Error("App node already has a lead bot; members must use --parent <app>/lead");
+    }
     if (nameChanged || nodeChanged) {
       if (peers.some((peer) => (peer.nodeId ?? null) === nodeId && peer.name === bot.name)) {
         throw new Error(`Duplicate bot address: ${bot.name}`);
@@ -127,6 +131,11 @@ export function validateBotSave(nodes: BotNode[], bot: BotMetadata, peers: BotMe
   } else {
     if (appNames.has(bot.name)) throw new Error(`Shared bot name collides with app node: ${bot.name}`);
     if (bot.parentBotId ?? null) throw new Error("Shared bots cannot have a parent bot");
+    if (nameChanged || nodeChanged) {
+      if (peers.some((peer) => !(peer.nodeId ?? null) && peer.name === bot.name)) {
+        throw new Error(`Duplicate shared bot name: ${bot.name}`);
+      }
+    }
   }
   const parentId = bot.parentBotId ?? null;
   if (!parentId) return;
@@ -148,6 +157,9 @@ export function validateBotSave(nodes: BotNode[], bot: BotMetadata, peers: BotMe
 function validateBotPlacement(nodes: BotNode[], bot: BotMetadata, peers: BotMetadata[], node: BotNode) {
   if (node.kind === "schema" && node.metadata.foldedInto) {
     throw new Error(`Schema node is folded into ${node.metadata.foldedInto}; bots cannot be attached here`);
+  }
+  if (node.kind === "schema" && bot.name !== "data") {
+    throw new Error("Only data bots may be attached to a schema node");
   }
   if (node.kind === "schema" && bot.name === "data") {
     const existing = peers.find((peer) => (peer.nodeId ?? null) === node.id && peer.name === "data");

@@ -14,14 +14,18 @@ async function setup() {
 describe("fleet probes (reviewer BLOCK)", () => {
   it("1 legacy duplicate shared names do not block unrelated saves", async () => {
     const { host, run } = await setup();
-    const first = (await run(["create", "--name", "Atlas", "--role", "A", "--machine", "Execution machine", "--soul", "a"])).exitCode;
-    const second = (await run(["create", "--name", "Atlas", "--role", "B", "--machine", "Execution machine", "--soul", "b"])).exitCode;
-    expect(first).toBe(0);
-    expect(second).toBe(0);
-    const atlases = host.store.list().filter((bot) => bot.name === "Atlas");
-    expect(atlases).toHaveLength(2);
-    host.store.mutate(atlases[0]!.id, (bot) => ({ ...bot, role: "Updated role" }));
-    expect(host.store.require(atlases[0]!.id).role).toBe("Updated role");
+    expect((await run(["create", "--name", "Atlas", "--role", "A", "--machine", "Execution machine", "--soul", "a"])).exitCode).toBe(0);
+    const dup = await run(["create", "--name", "Atlas", "--role", "B", "--machine", "Execution machine", "--soul", "b"]);
+    expect(dup.exitCode).toBe(1);
+    expect(dup.stderr).toMatch(/Duplicate shared bot name/i);
+    host.bb.storage.database().prepare("INSERT OR REPLACE INTO bots(id,data) VALUES (?,?)").run("bot_atlas2", JSON.stringify({
+      id: "bot_atlas2", name: "Atlas", role: "Legacy B", hostId: "host-home", stateReady: true, legacyHomeProjectId: null,
+      avatar, sectionId: null, linkedProjectIds: [], mainThreadId: null, hiddenUntilActivity: false, hiddenAt: null, order: 1,
+      soul: "b", agents: "", memory: "", settings: {}, stateHashes: { "SOUL.md": null, "AGENTS.md": null, "MEMORY.md": null, "settings.json": null },
+      updatedAt: 1, legacyProjectId: null, nodeId: null, parentBotId: null,
+    }));
+    host.store.mutate("bot_atlas2", (bot) => ({ ...bot, role: "Updated legacy" }));
+    expect(host.store.require("bot_atlas2").role).toBe("Updated legacy");
   });
 
   it("2 thread callers cannot mutate registry except fleet steward", async () => {
@@ -52,7 +56,7 @@ describe("fleet probes (reviewer BLOCK)", () => {
     const cross = await run(["create", "--name", "ui", "--role", "UI", "--machine", "Execution machine", "--soul", "u", "--node", "billing", "--parent", "crm/lead"]);
     expect(cross.exitCode).toBe(1);
     expect(cross.stderr).toMatch(/same app/i);
-    await run(["create", "--name", "api", "--role", "API", "--machine", "Execution machine", "--soul", "api", "--node", "billing"]);
+    await run(["create", "--name", "api", "--role", "API", "--machine", "Execution machine", "--soul", "api", "--node", "billing", "--parent", "billing/lead"]);
     await run(["node", "create", "billing/ledger", "--kind", "schema", "--folded-into", "billing/api"]);
     const onFolded = await run(["create", "--name", "data", "--role", "Data", "--machine", "Execution machine", "--soul", "d", "--node", "billing/ledger"]);
     expect(onFolded.exitCode).toBe(1);
@@ -84,6 +88,34 @@ describe("fleet probes (reviewer BLOCK)", () => {
     expect((await run(["show", "billing/lead", "--json"])).exitCode).toBe(0);
     host.store.mutate("bot_legacyslash", (bot) => ({ ...bot, role: "Still legacy" }));
     expect((await run(["create", "--name", "new/bot", "--role", "X", "--machine", "Execution machine", "--soul", "x"])).exitCode).toBe(1);
+  });
+
+  it("round2 duplicate new shared fleet name is rejected", async () => {
+    const { run } = await setup();
+    expect((await run(["create", "--name", "fleet", "--role", "Steward", "--machine", "Execution machine", "--soul", "a"])).exitCode).toBe(0);
+    const dup = await run(["create", "--name", "fleet", "--role", "Fake", "--machine", "Execution machine", "--soul", "b"]);
+    expect(dup.exitCode).toBe(1);
+    expect(dup.stderr).toMatch(/Duplicate shared bot name/i);
+  });
+
+  it("round2 rejects a second app root without parent", async () => {
+    const { run } = await setup();
+    await run(["node", "create", "billing", "--kind", "app", "--project", "project"]);
+    await run(["create", "--name", "lead", "--role", "Lead", "--machine", "Execution machine", "--soul", "l", "--node", "billing"]);
+    const rogue = await run(["create", "--name", "rogue", "--role", "Rogue", "--machine", "Execution machine", "--soul", "r", "--node", "billing"]);
+    expect(rogue.exitCode).toBe(1);
+    expect(rogue.stderr).toMatch(/lead bot/i);
+  });
+
+  it("round2 schema nodes accept only data bots", async () => {
+    const { run } = await setup();
+    await run(["node", "create", "billing", "--kind", "app"]);
+    await run(["create", "--name", "lead", "--role", "Lead", "--machine", "Execution machine", "--soul", "l", "--node", "billing"]);
+    await run(["node", "create", "billing/ledger", "--kind", "schema"]);
+    const ui = await run(["create", "--name", "ui", "--role", "UI", "--machine", "Execution machine", "--soul", "u", "--node", "billing/ledger", "--parent", "billing/lead"]);
+    expect(ui.exitCode).toBe(1);
+    expect(ui.stderr).toMatch(/data bots/i);
+    expect((await run(["create", "--name", "data", "--role", "Data", "--machine", "Execution machine", "--soul", "d", "--node", "billing/ledger", "--parent", "billing/lead"])).exitCode).toBe(0);
   });
 
   it("6 tree marks engaged shared bots", async () => {
