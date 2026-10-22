@@ -306,6 +306,8 @@ switching storage versions; the prior code checkpoint is
 
 Use BB 0.46.1 or newer and Node.js 24. No BB-core change is required for this model.
 
+- **npm only** — use `npm ci`, `npm run typecheck`, and `npm test`; do not use pnpm or add `pnpm-lock.yaml`.
+
 ```sh
 git clone --branch main https://github.com/Limitless-Enterprise/bb-bots-fleet.git
 cd bb-bots-fleet
