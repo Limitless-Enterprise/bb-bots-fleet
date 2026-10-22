@@ -336,7 +336,7 @@ Bot context states the current project relationship: owner, joined member (with 
 bb bots list
 bb bots list --json --limit 50 --offset 0
 bb bots show <bot-id-or-address> [--json]
-bb bots memory <bot-id-or-address> list [--json]
+bb bots memory <bot-id-or-exact-name> list [--json]
 bb bots memory <bot> read <entry-id> [--json]
 bb bots memory <bot> edit <entry-id> --from <file>
 bb bots memory <bot> export --to <directory>
@@ -345,7 +345,8 @@ bb bots message billing/lead "Scoped to one node"
 bb bots message <bot-id> "My reply" --thread <sender-conversation-id>
 ```
 
-`bb bots memory` refuses calls that carry a BB thread context (the CLI derives
+`bb bots memory` resolves its bot selector by **BOT ID** or exact name only (not
+fleet path addresses such as `billing/lead`). It refuses calls that carry a BB thread context (the CLI derives
 `ctx.threadId` from the caller's environment). On a single machine and OS user
 this is policy-enforced, not isolation: a shell can run
 `env -u BB_THREAD_ID bb bots memory …` and read any bot's level-1 memory. Full

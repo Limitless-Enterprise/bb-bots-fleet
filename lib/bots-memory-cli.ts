@@ -5,7 +5,7 @@ import type { BotMemory } from "./bot-memory";
 import type { BotStore } from "./bot-store";
 import { botMemoryKindSchema } from "./bot-memory-kinds";
 
-const USAGE = `bb bots memory <bot-id-or-name> list [--json]
+const USAGE = `bb bots memory <bot-id-or-exact-name> list [--json]
 bb bots memory <bot> read <entry-id> [--json]
 bb bots memory <bot> edit <entry-id> --from <file>
 bb bots memory <bot> export --to <directory>`;
@@ -19,7 +19,7 @@ function recipient(bots: BotMetadata[], selector: string) {
   if (byId) return byId;
   const matches = bots.filter((bot) => bot.name === selector);
   if (matches.length > 1) throw new Error("Several bots have that name. Use an exact bot ID from bb bots list.");
-  if (!matches.length) throw new Error("Bot not found. Use bb bots list for IDs and exact names.");
+  if (!matches.length) throw new Error("Bot not found. Use bb bots list for bot IDs or exact names.");
   return matches[0]!;
 }
 

@@ -127,7 +127,7 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
             ...bots.map((bot) => [bot.id, printable(bot.address), bot.parentName ?? "—", printable(bot.name), bot.status, bot.visibility, bot.ownedProjects.map(p => printable(p.name)).join(", ") || "—", bot.joinedProjects.map(p => printable(p.name)).join(", ") || "—", printable(bot.role), bot.mainThreadId ?? "No conversations"].join("\t")),
             ...(nextOffset !== null ? [`More bots: bb bots list --offset ${nextOffset} --limit ${options.limit}`] : []),
             `${bots.length} shown; ${all.length} total.`,
-            'Message: bb bots message <bot-id> "Your message"',
+            'Message: bb bots message <bot-id-or-address> "Your message"',
           ].join("\n") };
         }
         const [selector, raw] = options.positional as [string, string];
