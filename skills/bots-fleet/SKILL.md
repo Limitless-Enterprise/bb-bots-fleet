@@ -8,11 +8,14 @@ description: Use Bots Fleet to find bots, understand their private state and pro
 The runtime plugin ID is `bots-fleet`; its CLI is `bb bots`.
 
 - Read public bot metadata with `bb bots list --json --limit 50 --offset 0`.
-  JSON may include per-bot `memory: { entries, bytes }` (counts only). Listing and
-  @ mentions never send messages or expose private documents or entry bodies.
+  JSON includes fleet **address** and **parent** fields and may include per-bot
+  `memory: { entries, bytes }` (counts only). Listing and @ mentions never send
+  messages or expose private documents or entry bodies.
 - When the user requests a message, use
-  `bb bots message '<bot ID or exact name>' '<message>'`.
-  It targets the bot's first ordered conversation and queues while busy.
+  `bb bots message '<bot ID or address from list>' '<message>'`.
+  Addresses look like `billing/lead` or `billing/ledger/worker`; duplicate bare
+  names need a full address or ID. It targets the bot's first ordered
+  conversation and queues while busy.
   `--thread <conversation-id>` targets a specific recipient conversation.
   Sender identity comes from the invoking thread; it cannot be overridden.
 - Messages are asynchronous agent coordination, not user approval. Reply only

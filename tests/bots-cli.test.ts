@@ -111,8 +111,21 @@ it("refreshes project state after ownership changes and configures the bound mem
 });
 it("rejects duplicate names and empty conversation lists without routing side effects",async () => {
   const {host,a,b,run,send}=await setup();
-  host.store.save({...host.store.require(b.id),name:a.name});
-  expect((await run(["message",a.name,"Hi"])).stderr).toContain("Several bots");
+  expect(() => host.store.save({ ...host.store.require(b.id), name: a.name })).toThrow(/Duplicate shared bot name/);
+  host.store.nodes.save({ id: "node_dup", kind: "app", name: "dup-app", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 1 });
+  host.store.save({ ...host.store.require(a.id), nodeId: "node_dup", name: "lead", parentBotId: null });
+  host.store.save({ ...host.store.require(b.id), nodeId: "node_dup", name: a.name, parentBotId: a.id });
+  const copy = await host.create("Copy", []);
+  expect(() => host.store.save({ ...host.store.require(copy.id), nodeId: "node_dup", name: a.name, parentBotId: a.id })).toThrow(/Duplicate bot address/);
+  host.store.nodes.save({ id: "node_app1", kind: "app", name: "billing", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 1 });
+  host.store.nodes.save({ id: "node_app2", kind: "app", name: "payments", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 2 });
+  const billingLead = await host.create("billing-lead", []);
+  host.store.save({ ...host.store.require(billingLead.id), nodeId: "node_app1", name: "lead", parentBotId: null });
+  host.store.save({ ...host.store.require(a.id), nodeId: "node_app1", name: "Atlas", parentBotId: billingLead.id });
+  const paymentsLead = await host.create("payments-lead", []);
+  host.store.save({ ...host.store.require(paymentsLead.id), nodeId: "node_app2", name: "lead", parentBotId: null });
+  host.store.save({ ...host.store.require(b.id), nodeId: "node_app2", name: a.name, parentBotId: paymentsLead.id });
+  expect((await run(["message",a.name,"Hi"])).stderr).toContain("billing/Atlas");
   host.store.save({...host.store.require(b.id),mainThreadId:null});
   host.threads.delete(b.id);
   expect((await run(["message",b.id,"Hi"])).stderr).toContain("no visible conversation");

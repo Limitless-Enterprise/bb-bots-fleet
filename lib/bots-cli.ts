@@ -3,15 +3,18 @@ import type { BotMetadata } from "../contract";
 import type { BotStore } from "./bot-store";
 import type { BotMemory } from "./bot-memory";
 import { runBotsMemoryCommand } from "./bots-memory-cli";
+import type { FleetOps } from "./fleet-cli";
+import { FLEET_COMMANDS, listRowExtras, runFleetCommand } from "./fleet-cli";
+import { resolveBotSelector } from "./fleet-resolve";
+import { listBotCliActivity } from "./bot-cli-activity";
 import { listBotConversations } from "./bot-conversations";
-import { conversationRoots, orderConversations } from "./conversation-order";
 import { migrateFromPlugin } from "./migrate-from-plugin";
 import { SIDEBAR_MIGRATION_PENDING_WARNING, sidebarMigrationPending } from "./migrate-bots";
 
 const USAGE = `bb bots list [--json] [--limit 1-100] [--offset N]
-bb bots show <bot-id-or-exact-name> [--json]
+bb bots show <bot-id-or-address> [--json]
 bb bots memory <bot> list|read <id>|edit <id> --from <file>|export --to <dir>
-bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]
+bb bots message <bot-id-or-address> <message> [--thread <conversation-id>] [--json]
 bb bots migrate-from bots-sidebar [--json]
 
 Messages go to the bot's first conversation by default and queue while it is busy.
@@ -57,13 +60,8 @@ function parse(argv: string[]): Options | null {
   return options;
 }
 
-function recipient(bots: BotMetadata[], selector: string) {
-  const byId = bots.find((bot) => bot.id === selector);
-  if (byId) return byId;
-  const matches = bots.filter((bot) => bot.name === selector);
-  if (matches.length > 1) throw new Error("Several bots have that name. Use an exact bot ID from bb bots list.");
-  if (!matches.length) throw new Error("Bot not found. Use bb bots list for IDs and exact names.");
-  return matches[0]!;
+function recipient(store: BotStore, selector: string) {
+  return resolveBotSelector(store, selector);
 }
 
 type Sender = { threadId: string; bot: BotMetadata | null } | null;
@@ -89,14 +87,14 @@ export function frameBotMessage(sender: Sender, message: string): string {
   ].join("\n");
 }
 
-export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMemory, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>) {
+export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMemory, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, ops?: FleetOps) {
   bb.cli.register({
     name: "bots", summary: "List bots and send attributed asynchronous messages to their conversations",
     commands: [
-      { name: "list", summary: "List bot IDs, activity, visibility, owned/joined project names, and level-1 memory counts (JSON only; no entry bodies)", usage: "bb bots list [--json] [--limit 1-100] [--offset N]" },
-      { name: "show", summary: "Show one bot's public metadata and level-1 memory counts", usage: "bb bots show <bot-id-or-exact-name> [--json]" },
-      { name: "message", summary: "Message a bot's first conversation, or reply to one of its conversations; queues while busy", usage: "bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]" },
+      { name: "list", summary: "List bot IDs, fleet addresses, parents, activity, visibility, project names, and level-1 memory counts (JSON only; no entry bodies)", usage: "bb bots list [--json] [--limit 1-100] [--offset N]" },
+      { name: "message", summary: "Message a bot's first conversation, or reply to one of its conversations; queues while busy", usage: "bb bots message <bot-id-or-address> <message> [--thread <conversation-id>] [--json]" },
       { name: "migrate-from", summary: "One-time import of bots-sidebar plugin storage into Bots Fleet", usage: "bb bots migrate-from bots-sidebar [--json]" },
+      ...FLEET_COMMANDS,
     ],
     async run(argv, ctx) {
       try {
@@ -114,21 +112,23 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
             stdout: json ? JSON.stringify(result) : `Migrated ${result.botCount} bots and ${result.bindingCount} conversation bindings from ${result.sourcePluginId}.`,
           };
         }
+        if (!argv.length || argv[0] === "--help" || argv[0] === "help") return { exitCode: 0, stdout: USAGE };
+        const fleet = new Set(FLEET_COMMANDS.map((command) => command.name));
+        if (fleet.has(argv[0] as typeof FLEET_COMMANDS[number]["name"])) {
+          if (!ops) throw new Error("Fleet CLI is unavailable");
+          return await runFleetCommand(argv[0]!, argv.slice(1), ctx, bb, store, ops, resolveOwner, memory);
+        }
         const options = parse(argv);
         if (!options) return { exitCode: 0, stdout: USAGE };
-        if (options.command === "show") {
-          const bot = recipient(store.list(), options.positional[0]!);
-          const stats = memory.stats(bot.id);
-          return { exitCode: 0, stdout: options.json ? JSON.stringify({ id: bot.id, name: bot.name, role: bot.role, memory: stats }) : `${bot.id}\tmemory.entries=${stats.entries}\tmemory.bytes=${stats.bytes}` };
-        }
         if (options.command === "list") {
           const pendingHint = sidebarMigrationPending(bb, store) ? SIDEBAR_MIGRATION_PENDING_WARNING : null;
           const all = store.list();
-          const { activity, firstThreads } = await listActivity(ctx);
+          const { activity, firstThreads } = await listBotCliActivity(bb, store, resolveOwner, ctx);
           const projects = new Map((await bb.sdk.projects.list()).map(project => [project.id, project.name]));
           const bots = all.slice(options.offset, options.offset + options.limit).map((bot) => {
             const owned = new Set(store.ownedProjects(bot.id));
             const project = (id: string) => ({ id, name: projects.get(id) ?? "Unavailable project" });
+            const extras = listRowExtras(store, bot);
             return ({
             id: bot.id, name: bot.name, role: bot.role, mainThreadId: firstThreads.get(bot.id) ?? null,
             linkedProjectCount: bot.linkedProjectIds.length, ownedProjectCount: store.ownedProjects(bot.id).length,
@@ -137,6 +137,7 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
             memory: memory.stats(bot.id),
             ownedProjects: [...owned].map(project),
             joinedProjects: bot.linkedProjectIds.filter(id => !owned.has(id)).map(project),
+            address: extras.address, nodePath: extras.nodePath, parentBotId: extras.parentBotId, parentName: extras.parentName,
           }); });
           const nextOffset = options.offset + bots.length < all.length ? options.offset + bots.length : null;
           const value = { bots, total: all.length, nextOffset };
@@ -144,18 +145,18 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
             exitCode: 0,
             ...(pendingHint ? { stderr: `${pendingHint}\n` } : {}),
             stdout: options.json ? JSON.stringify(value) : [
-            "BOT ID (MESSAGE TARGET)\tNAME\tSTATUS\tVISIBILITY\tOWNED PROJECTS\tJOINED PROJECTS\tROLE\tFIRST CONVERSATION",
-            ...bots.map((bot) => [bot.id, printable(bot.name), bot.status, bot.visibility, bot.ownedProjects.map(p => printable(p.name)).join(", ") || "—", bot.joinedProjects.map(p => printable(p.name)).join(", ") || "—", printable(bot.role), bot.mainThreadId ?? "No conversations"].join("\t")),
+            "BOT ID (MESSAGE TARGET)\tADDRESS\tPARENT\tNAME\tSTATUS\tVISIBILITY\tOWNED PROJECTS\tJOINED PROJECTS\tROLE\tFIRST CONVERSATION",
+            ...bots.map((bot) => [bot.id, printable(bot.address), bot.parentName ?? "—", printable(bot.name), bot.status, bot.visibility, bot.ownedProjects.map(p => printable(p.name)).join(", ") || "—", bot.joinedProjects.map(p => printable(p.name)).join(", ") || "—", printable(bot.role), bot.mainThreadId ?? "No conversations"].join("\t")),
             ...(nextOffset !== null ? [`More bots: bb bots list --offset ${nextOffset} --limit ${options.limit}`] : []),
             `${bots.length} shown; ${all.length} total.`,
-            'Message: bb bots message <bot-id> "Your message"',
+            'Message: bb bots message <bot-id-or-address> "Your message"',
           ].join("\n"),
           };
         }
         const [selector, raw] = options.positional as [string, string];
         const message = raw.trim();
         if (!message || message.length > MESSAGE_MAX_CHARS) throw new Error(`Message must contain 1-${MESSAGE_MAX_CHARS} characters`);
-        const bot = recipient(store.list(), selector);
+        const bot = recipient(store, selector);
         const threadId = options.threadId ?? (await listBotConversations(bb, bot, resolveOwner)).roots[0]?.id;
         if (!threadId) throw new Error("This bot has no visible conversation. Open one in the sidebar first, or choose a bound conversation with --thread.");
         if (ctx.threadId === threadId) throw new Error("Cannot message the current conversation. Choose another bot or conversation.");
@@ -175,49 +176,8 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
       } catch (error) { return { exitCode: 1, stderr: error instanceof Error ? error.message : String(error) }; }
     },
   });
-  async function listActivity(ctx: PluginCliContext) {
-    type Status = "idle" | "working" | "waiting" | "error";
-    const rank = { idle: 0, error: 1, working: 2, waiting: 3 };
-    const result = new Map<string, Status>();
-    const threads: Awaited<ReturnType<typeof bb.sdk.threads.list>> = [];
-    for (let offset = 0; ; offset += 100) {
-      ctx.signal?.throwIfAborted();
-      const page = await bb.sdk.threads.list({ archived: false, includeHidden: true, offset, limit: 100, signal: ctx.signal });
-      threads.push(...page);
-      if (page.length < 100) break;
-    }
-    const byId = new Map(threads.map(thread => [thread.id, thread]));
-    const direct = new Map(store.bindings().map(binding => [binding.threadId, binding.botId]));
-    const botRows = new Map<string, typeof threads>();
-    for (const thread of threads) {
-      if (thread.archivedAt || thread.deletedAt) continue;
-      let id: string | null = thread.id;
-      let owner: string | undefined;
-      const visited = new Set<string>();
-      while (id && !visited.has(id)) {
-        visited.add(id);
-        owner = direct.get(id);
-        if (owner) break;
-        const ancestor = byId.get(id);
-        if (!ancestor) { owner = await resolveOwner(id, false) ?? undefined; break; }
-        id = ancestor.parentThreadId ?? ancestor.sourceThreadId;
-      }
-      if (!owner) continue;
-      if (thread.visibility !== "hidden") {
-        const rows = botRows.get(owner) ?? []; rows.push(thread); botRows.set(owner, rows);
-      }
-      const runtime = thread.runtime.displayStatus;
-      const status: Status = thread.hasPendingInteraction || runtime === "waiting-for-host" ? "waiting"
-        : ["active", "pending", "provisioning", "starting", "stopping"].includes(runtime) || Object.values(thread.activity ?? {}).some(count => count > 0) ? "working"
-        : runtime === "error" || thread.queuedWork === "failed" ? "error" : "idle";
-      if (rank[status] > rank[result.get(owner) ?? "idle"]) result.set(owner, status);
-    }
-    const firstThreads = new Map(store.list().map(bot => [bot.id, conversationRoots(orderConversations(botRows.get(bot.id) ?? [], bot.threadOrder))[0]?.id]));
-    return { activity: result, firstThreads };
-  }
   async function resolveSender(ctx: PluginCliContext): Promise<Sender> {
     if (!ctx.threadId) return null;
-    // Verify the invoking conversation exists; never accept a caller-supplied bot name.
     await bb.sdk.threads.get({ threadId: ctx.threadId });
     const id = await resolveOwner(ctx.threadId, false);
     return { threadId: ctx.threadId, bot: id ? store.require(id) : null };

@@ -89,13 +89,13 @@ export function createBotOps(deps: BotOpsDeps) {
     }));
   }
 
-  async function createBot({ name, role, hostId, avatar, sectionId, linkedProjectIds, ownedProjectIds, soul, memory, settings, launchPreset }: z.infer<typeof rpcContract.bot_create.input>) {
+  async function createBot({ name, role, hostId, avatar, sectionId, linkedProjectIds, ownedProjectIds, soul, memory, settings, launchPreset, nodeId = null, parentBotId = null }: z.infer<typeof rpcContract.bot_create.input> & { nodeId?: string | null; parentBotId?: string | null }) {
     return serial("registry", async () => {
       if (sidebarMigrationPending(bb, store)) throw new Error(SIDEBAR_MIGRATION_PENDING_CREATE_ERROR);
       await importLegacy(); await validateLinks(linkedProjectIds); if (ownedProjectIds) await validateLinks(ownedProjectIds); validateSection(sectionId);
       if (!(await bb.sdk.hosts.list()).some((host) => host.id === hostId)) throw new Error("Choose an enrolled execution machine");
       const id = `bot_${randomUUID().replaceAll("-", "")}`;
-      let created: BotMetadata = { id, name, role, hostId, stateReady: true, legacyHomeProjectId: null, avatar, sectionId, linkedProjectIds, soul, agents: "", memory: "", settings: {}, stateHashes: { ...EMPTY_HASHES }, order: store.list().length, mainThreadId: null, hiddenUntilActivity: false, hiddenAt: null, updatedAt: Date.now(), legacyProjectId: null };
+      let created: BotMetadata = { id, name, role, hostId, stateReady: true, legacyHomeProjectId: null, avatar, sectionId, linkedProjectIds, soul, agents: "", memory: "", settings: {}, stateHashes: { ...EMPTY_HASHES }, order: store.list().length, mainThreadId: null, hiddenUntilActivity: false, hiddenAt: null, updatedAt: Date.now(), legacyProjectId: null, nodeId, parentBotId };
       if (memory !== undefined) created = applyState(created, "MEMORY.md", memory);
       if (launchPreset !== undefined) created.launchPreset = launchPreset;
       if (settings !== undefined) created = applyState(created, "settings.json", stateContent({ ...created, settings }, "settings.json"));
@@ -114,6 +114,33 @@ export function createBotOps(deps: BotOpsDeps) {
     });
   }
 
+  async function updateBot(botId: string, patch: Partial<{ name: string; role: string; soul: string; hostId: string; sectionId: string | null; parentBotId: string | null; launchPreset: BotMetadata["launchPreset"] }>) {
+    return serial("registry", () => serial(botId, async () => {
+      const bot = await state.prepare(botId);
+      if (patch.hostId !== undefined && patch.hostId !== bot.hostId && !(await bb.sdk.hosts.list()).some((host) => host.id === patch.hostId)) throw new Error("Choose an enrolled execution machine");
+      validateSection(patch.sectionId !== undefined ? patch.sectionId : bot.sectionId);
+      const next = store.mutateWithProjects(botId, (current) => {
+        const soul = patch.soul ?? current.soul;
+        const soulChanged = patch.soul !== undefined && sha256(patch.soul) !== sha256(current.soul);
+        return {
+          ...current,
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.role !== undefined ? { role: patch.role } : {}),
+          ...(patch.hostId !== undefined ? { hostId: patch.hostId } : {}),
+          ...(patch.sectionId !== undefined ? { sectionId: patch.sectionId } : {}),
+          ...(patch.parentBotId !== undefined ? { parentBotId: patch.parentBotId } : {}),
+          ...(patch.soul !== undefined ? { soul: patch.soul } : {}),
+          ...(patch.launchPreset !== undefined ? { launchPreset: patch.launchPreset } : {}),
+          stateHashes: soulChanged ? { ...current.stateHashes, "SOUL.md": sha256(soul) } : current.stateHashes,
+          updatedAt: nextTimestamp(current.updatedAt),
+        };
+      });
+      await state.mirror(next);
+      publish();
+      return next;
+    }));
+  }
+
   async function startConversation({ botId, request, makeMain }: z.infer<typeof rpcContract.conversation_create.input>) {
     if (request.projectId !== await personalProjectId()) await updateProjectRole(botId, "join", request.projectId);
     return serial(botId, async () => {
@@ -127,5 +154,5 @@ export function createBotOps(deps: BotOpsDeps) {
     });
   }
 
-  return { resolveOwner, saveBotIdentity, updateProjectRole, createBot, createSection, startConversation };
+  return { resolveOwner, saveBotIdentity, updateBot, updateProjectRole, createBot, createSection, startConversation };
 }

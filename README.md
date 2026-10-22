@@ -352,16 +352,18 @@ Bot context states the current project relationship: owner, joined member (with 
 ```sh
 bb bots list
 bb bots list --json --limit 50 --offset 0
-bb bots show <bot-id-or-exact-name> [--json]
+bb bots show <bot-id-or-address> [--json]
 bb bots memory <bot-id-or-exact-name> list [--json]
 bb bots memory <bot> read <entry-id> [--json]
 bb bots memory <bot> edit <entry-id> --from <file>
 bb bots memory <bot> export --to <directory>
-bb bots message <bot-id-or-exact-name> "Please review the changes"
+bb bots message <bot> "Please review the changes"
+bb bots message billing/lead "Scoped to one node"
 bb bots message <bot-id> "My reply" --thread <sender-conversation-id>
 ```
 
-`bb bots memory` refuses calls that carry a BB thread context (the CLI derives
+`bb bots memory` resolves its bot selector by **BOT ID** or exact name only (not
+fleet path addresses such as `billing/lead`). It refuses calls that carry a BB thread context (the CLI derives
 `ctx.threadId` from the caller's environment). On a single machine and OS user
 this is policy-enforced, not isolation: a shell can run
 `env -u BB_THREAD_ID bb bots memory …` and read any bot's level-1 memory. Full
@@ -370,20 +372,64 @@ server (ADR 0010 §7; foundation §6.7). `bb bots show` prints level-1 memory
 entry and byte counts for one bot (same counts embedded in `bb bots list --json`
 per bot).
 
-Messages use BB's native queue: idle conversations start a turn, busy conversations receive the message later. The default destination is the recipient's first visible ordered conversation; `--thread` must belong to that bot. Messages identify the invoking conversation and its bound bot, clearly distinguish agent coordination from user instructions, and include an asynchronous reply command. FYI messages need no acknowledgement. Unbound conversations and external CLI callers are labeled accurately. The CLI does not create conversations or change membership, bindings, permissions, or private state.
+`bb bots message` resolves `<bot>` as a stable bot ID, a fleet address such as
+`billing/lead` or `billing/ledger/worker`, a unique shared bot name with no
+node, or a unique node-local name when only one bot in the fleet uses that
+name. Duplicate names require a full address or ID; errors list matching
+addresses. Messages use BB's native queue: idle conversations start a turn, busy
+conversations receive the message later. The default destination is the
+recipient's first visible ordered conversation; `--thread` must belong to that
+bot. Messages identify the invoking conversation and its bound bot, clearly
+distinguish agent coordination from user instructions, and include an
+asynchronous reply command. FYI messages need no acknowledgement. Unbound
+conversations and external CLI callers are labeled accurately. `bb bots message`
+does not create conversations or change membership, bindings, permissions, or
+private state.
 
 Listing exposes public bot metadata only and paginates at 100 bots maximum.
 `bb bots list --json` also includes per-bot `memory: { entries, bytes }` (live
-entry count and total body bytes, never entry titles or bodies). Names must match
-exactly; use IDs for duplicate names. Quote messages (maximum 12,000 characters).
-Delivery receipts confirm acceptance, not task completion or a reply.
+entry count and total body bytes, never entry titles or bodies). Quote messages
+(maximum 12,000 characters). Delivery receipts confirm acceptance, not task
+completion or a reply.
 
-`bb bots list` also shows **STATUS**, **VISIBILITY**, **OWNED PROJECTS**, and
-**JOINED PROJECTS** by name. Joined projects are memberships without ownership;
-JSON includes both project IDs and names. The first column is the stable bot ID
-accepted by `bb bots message`. Activity aggregates all non-archived bot conversations,
+`bb bots list` shows **BOT ID**, **ADDRESS**, **PARENT**, **NAME**, **STATUS**,
+**VISIBILITY**, **OWNED PROJECTS**, **JOINED PROJECTS**, **ROLE**, and **FIRST
+CONVERSATION**. JSON includes the same fields (`address`, `nodePath`,
+`parentBotId`, `parentName`, project IDs and names). Either the bot ID or
+**ADDRESS** column works as a `bb bots message` target. Activity aggregates all
+non-archived bot conversations,
 including inherited children and hidden conversations: waiting takes precedence over
 working, then error, then idle. Visibility separately reflects the bot's hidden setting.
+
+Fleet registry commands (see the [Bots CLI LLD](https://github.com/Limitless-Enterprise/srs/blob/docs/agent-fleet-design/agent-fleet/03-architecture/low-level-design-bots-cli.md)
+for full flags) manage app/schema nodes and bot records in plugin storage:
+
+```sh
+bb bots node create billing --kind app --project <project>
+bb bots node create billing/ledger --kind schema --data-service-path api/ledger
+bb bots node list [app] [--json]
+bb bots create --name lead --role "Module Lead" --machine <host> --soul "..." --node billing
+bb bots create --name ui --role Engineer --machine <host> --soul "..." --node billing --parent billing/lead
+bb bots update billing/lead --role "Updated role"
+bb bots show billing/ui [--json]
+bb bots tree [app] [--json]
+bb bots link <bot> <project> --as owner|member
+bb bots unlink <bot> <project>
+bb bots release <bot> <project>
+```
+
+Create app and schema nodes before attaching bots with `--node`. Bot create and
+update route through the same registry validation and private-state mirroring
+as the sidebar; link, unlink, and release adjust project membership and
+ownership atomically.
+
+Fleet registry commands (`node create`, `create`, `update`, `link`, `unlink`,
+`release`, and later `main` / `deploy`) refuse calls that carry a BB thread
+context (`ctx.threadId`), except when the invoking conversation resolves through
+`resolveOwner` to the shared `fleet` steward bot. `show`, `tree`, and `list`
+stay readable from any conversation. On a single machine and OS user this is
+policy-enforced, not isolation: an operator shell can still run the same
+commands without a thread context.
 
 Incoming bot messages use BB's native attributed, expandable agent-message row
 and sender-conversation link. Inside it, a **🤖 Bot message · Name** heading and

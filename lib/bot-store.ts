@@ -1,6 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { metadataSchema, sectionSchema, type BotMetadata, type BotSection } from "../contract";
+import { createBotNodeStore, validateBotSave, type BotNode } from "./bot-nodes";
 
 export function createBotStore(bb: BbPluginApi) {
   const db = bb.storage.database();
@@ -34,7 +35,20 @@ export function createBotStore(bb: BbPluginApi) {
       PRIMARY KEY (entry_id, revision)
     )`,
     "CREATE INDEX bot_memory_by_bot ON bot_memory_entries(bot_id, deleted_at)",
+    `CREATE TABLE bot_nodes (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      parent_node_id TEXT,
+      project_id TEXT,
+      section_id TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL,
+      UNIQUE (parent_node_id, name)
+    )`,
+    "CREATE UNIQUE INDEX IF NOT EXISTS bot_nodes_root_name ON bot_nodes(name) WHERE parent_node_id IS NULL",
   ]);
+  const nodes = createBotNodeStore(db);
   const legacySchema = metadataSchema.omit({ stateReady: true, legacyHomeProjectId: true }).extend({ homePath: z.string(), homeProjectId: z.string().nullable() }).strict();
   const raw = (id: string) => db.prepare("SELECT data FROM bots WHERE id = ?").get(id) as { data: string } | undefined;
   function decode(data: string): BotMetadata {
@@ -51,10 +65,13 @@ export function createBotStore(bb: BbPluginApi) {
   const list = (): BotMetadata[] => (db.prepare("SELECT data FROM bots").all() as { data: string }[])
     .map((row) => decode(row.data)).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
   const save = (bot: BotMetadata) => db.transaction(() => {
-    const value = metadataSchema.parse(bot);
-    const previous = raw(bot.id);
-    if (previous) {
-      const legacy = legacySchema.safeParse(JSON.parse(previous.data));
+    const value = metadataSchema.parse({ nodeId: null, parentBotId: null, ...bot });
+    const previousRow = raw(bot.id);
+    const previous = previousRow ? decode(previousRow.data) : null;
+    const peers = list().filter((entry) => entry.id !== value.id);
+    validateBotSave(nodes.list(), value, peers, previous);
+    if (previousRow) {
+      const legacy = legacySchema.safeParse(JSON.parse(previousRow.data));
       if (legacy.success) {
         if (!state(`legacy-state:${bot.id}`)) setState(`legacy-state:${bot.id}`, { hostId: legacy.data.hostId, path: legacy.data.homePath, homeProjectId: legacy.data.homeProjectId });
         if (!state(`legacy-record:${bot.id}`)) setState(`legacy-record:${bot.id}`, legacy.data);
@@ -99,6 +116,7 @@ export function createBotStore(bb: BbPluginApi) {
   }
   return {
     get, list, save, state, setState, owner, bind, projectOwner, projectOwners, ownedProjects, saveWithProjects,
+    nodes,
     changeProjectRole(id: string, projectId: string, action: "join" | "leave" | "own" | "release") {
       return db.transaction(() => {
         const bot = get(id); if (!bot) throw new Error("Bot no longer exists");

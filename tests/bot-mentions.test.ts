@@ -29,10 +29,19 @@ it("matches names, roles and IDs without requiring project membership", async ()
 });
 
 it("supports @bots discovery, includes hidden bots and disambiguates duplicate names", async () => {
-  const host = await setup(); const a = await host.create("Atlas", []); const b = await host.create("Atlas", []);
-  host.store.mutate(b.id, current => ({ ...current, hiddenUntilActivity: true, hiddenAt: Date.now() }));
+  const host = await setup();
+  const a = await host.create("Atlas", []);
+  host.store.nodes.save({ id: "node_billing", kind: "app", name: "billing", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 1 });
+  const billingLead = await host.create("billing-lead", []);
+  host.store.save({ ...host.store.require(billingLead.id), nodeId: "node_billing", name: "lead", parentBotId: null });
+  host.store.save({ ...host.store.require(a.id), nodeId: "node_billing", name: "Atlas", parentBotId: billingLead.id });
+  const b = await host.create("Beryl", []);
+  host.store.nodes.save({ id: "node_payments", kind: "app", name: "payments", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 2 });
+  const paymentsLead = await host.create("payments-lead", []);
+  host.store.save({ ...host.store.require(paymentsLead.id), nodeId: "node_payments", name: "lead", parentBotId: null });
+  host.store.save({ ...host.store.require(b.id), nodeId: "node_payments", name: "Atlas", parentBotId: paymentsLead.id, hiddenUntilActivity: true, hiddenAt: Date.now() });
   const items = await provider(host).search(context("bots"));
-  expect(items.map(item => item.id)).toEqual([a.id, b.id]);
+  expect(items.map(item => item.id)).toEqual(expect.arrayContaining([a.id, b.id]));
   expect(items[0]?.subtitle).not.toEqual(items[1]?.subtitle);
   expect((await provider(host).search(context("Atlas"))).map(item => item.id)).toEqual([a.id, b.id]);
 });
@@ -75,7 +84,17 @@ it("keeps bots without a main referenceable without starting a conversation", as
 });
 
 it("rejects a stale/deleted identity rather than silently choosing a namesake", async () => {
-  const host = await setup(); const a = await host.create("Atlas", []); const b = await host.create("Atlas", []);
+  const host = await setup();
+  const a = await host.create("Atlas", []);
+  host.store.nodes.save({ id: "node_billing", kind: "app", name: "billing", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 1 });
+  const billingLead = await host.create("billing-lead", []);
+  host.store.save({ ...host.store.require(billingLead.id), nodeId: "node_billing", name: "lead", parentBotId: null });
+  host.store.save({ ...host.store.require(a.id), nodeId: "node_billing", name: "Atlas", parentBotId: billingLead.id });
+  const b = await host.create("Beryl", []);
+  host.store.nodes.save({ id: "node_payments", kind: "app", name: "payments", parentNodeId: null, projectId: null, sectionId: null, metadata: {}, createdAt: 2 });
+  const paymentsLead = await host.create("payments-lead", []);
+  host.store.save({ ...host.store.require(paymentsLead.id), nodeId: "node_payments", name: "lead", parentBotId: null });
+  host.store.save({ ...host.store.require(b.id), nodeId: "node_payments", name: "Atlas", parentBotId: paymentsLead.id });
   host.bb.storage.database().prepare("DELETE FROM bots WHERE id=?").run(a.id);
   expect(() => provider(host).resolve(a.id)).toThrow(/no longer exists/);
   expect(provider(host).resolve(b.id)).toBeTruthy();
