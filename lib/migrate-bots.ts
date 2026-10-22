@@ -1,8 +1,14 @@
+import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { avatarSchema, type BotMetadata, type BotSection } from "../contract";
 import { paletteColorForSeed } from "./appearance";
+import { BOTS_SIDEBAR_ORIGIN } from "./bot-plugin-origins";
 import { EMPTY_HASHES, type BotStore } from "./bot-store";
+import { PLUGIN_MIGRATION_STATE_KEY } from "./migrate-from-plugin";
+import { pluginDataDirectory } from "./plugin-data-dir";
 const legacyFile = (root: string, name: string) => `${root.replace(/\/+$/, "")}/${name}`;
 
 const LEGACY_KEY = "project-bots-v1";
@@ -10,6 +16,30 @@ const LEGACY_SECTIONS = "project-bot-sections-v1";
 type Snapshot = { projectIds: string[]; done: string[]; capturedAt: number };
 function isMissing(error: unknown) {
   return error instanceof Error && /ENOENT|no such file or directory|file not found|path (?:does not exist|not found)/i.test(error.message);
+}
+export const SIDEBAR_MIGRATION_PENDING_WARNING =
+  "Sidebar storage found. Run `bb bots migrate-from bots-sidebar` to import your bots.";
+export const SIDEBAR_MIGRATION_PENDING_CREATE_ERROR =
+  "Complete sidebar migration first: run `bb bots migrate-from bots-sidebar` before creating bots here.";
+
+function sidebarSourceHasBotData(sourceDir: string) {
+  const dbPath = join(sourceDir, "data.db");
+  if (!existsSync(dbPath)) return false;
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const bots = (db.prepare("SELECT COUNT(*) AS count FROM bots").get() as { count: number }).count;
+    const bindings = (db.prepare("SELECT COUNT(*) AS count FROM bot_threads").get() as { count: number }).count;
+    return bots > 0 || bindings > 0;
+  } catch {
+    return false;
+  } finally {
+    db.close();
+  }
+}
+
+export function sidebarMigrationPending(bb: BbPluginApi, store: BotStore) {
+  if (store.state(PLUGIN_MIGRATION_STATE_KEY)) return false;
+  return sidebarSourceHasBotData(pluginDataDirectory(bb, BOTS_SIDEBAR_ORIGIN));
 }
 export function createLegacyImporter(bb: BbPluginApi, store: BotStore) {
   let inFlight: Promise<string[]> | null = null;
@@ -93,6 +123,7 @@ export function createLegacyImporter(bb: BbPluginApi, store: BotStore) {
     return warnings;
   }
   return () => {
+    if (sidebarMigrationPending(bb, store)) return Promise.resolve([SIDEBAR_MIGRATION_PENDING_WARNING]);
     if (!inFlight) inFlight = run().finally(() => { inFlight = null; });
     return inFlight;
   };

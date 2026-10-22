@@ -10,6 +10,21 @@ async function setup(projects = [project()]) { const host = await backend(projec
 afterEach(async () => { await Promise.all(instances.splice(0).map((host) => host.harness.lifecycle.dispose())); });
 const legacy = (overrides = {}) => JSON.stringify({ version: 1, role: "Chief of staff", avatar, hiddenUntilActivity: false, hiddenAt: null, mainThreadId: "old-main", awaitingMain: false, sectionId: "old-section", order: 3, updatedAt: 1, ...overrides });
 
+it("imports legacy project bots by legacyProjectId only, not project membership alone", async () => {
+  const host = await setup();
+  host.put("host-project", "/projects/project/bot.json", legacy());
+  host.put("host-project", "/projects/project/SOUL.md", "Legacy personality");
+  const member = await host.harness.behavior.callRpc("bot_create", {
+    name: "Member", role: "Helper", hostId: "host-home", avatar, sectionId: null, linkedProjectIds: ["project"], soul: "Member",
+  }) as BotMetadata;
+  expect(member.legacyProjectId).toBeNull();
+  const list = await host.harness.behavior.callRpc("bots_list", null) as { bots: BotMetadata[] };
+  expect(list.bots).toHaveLength(2);
+  const imported = list.bots.find((bot) => bot.legacyProjectId === "project");
+  expect(imported).toBeDefined();
+  expect(imported!.id).not.toBe(member.id);
+});
+
 it("does not turn ordinary or newly-added projects into bots", async () => {
   const host = await setup();
   const first = await host.harness.behavior.callRpc("bots_list", null) as { bots: BotMetadata[] };

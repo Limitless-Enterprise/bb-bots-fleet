@@ -8,11 +8,14 @@ import { FLEET_COMMANDS, listRowExtras, runFleetCommand } from "./fleet-cli";
 import { resolveBotSelector } from "./fleet-resolve";
 import { listBotCliActivity } from "./bot-cli-activity";
 import { listBotConversations } from "./bot-conversations";
+import { migrateFromPlugin } from "./migrate-from-plugin";
+import { SIDEBAR_MIGRATION_PENDING_WARNING, sidebarMigrationPending } from "./migrate-bots";
 
 const USAGE = `bb bots list [--json] [--limit 1-100] [--offset N]
 bb bots show <bot-id-or-address> [--json]
 bb bots memory <bot> list|read <id>|edit <id> --from <file>|export --to <dir>
 bb bots message <bot-id-or-address> <message> [--thread <conversation-id>] [--json]
+bb bots migrate-from bots-sidebar [--json]
 
 Messages go to the bot's first conversation by default and queue while it is busy.
 --thread targets a conversation belonging to that bot (for replies).
@@ -28,6 +31,7 @@ function parse(argv: string[]): Options | null {
   if (!argv.length || argv[0] === "--help" || argv[0] === "help") return null;
   const command = argv[0];
   if (command === "memory") throw new Error("Use: bb bots memory <bot> ...\n" + USAGE);
+  if (command === "migrate-from") throw new Error("Use: bb bots migrate-from bots-sidebar [--json]");
   if (command !== "list" && command !== "message" && command !== "show") throw new Error(`Unknown command: ${command}\n${USAGE}`);
   const options: Options = { command, json: false, limit: 50, offset: 0, positional: [] };
   const seen = new Set<string>();
@@ -89,11 +93,25 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
     commands: [
       { name: "list", summary: "List bot IDs, fleet addresses, parents, activity, visibility, project names, and level-1 memory counts (JSON only; no entry bodies)", usage: "bb bots list [--json] [--limit 1-100] [--offset N]" },
       { name: "message", summary: "Message a bot's first conversation, or reply to one of its conversations; queues while busy", usage: "bb bots message <bot-id-or-address> <message> [--thread <conversation-id>] [--json]" },
+      { name: "migrate-from", summary: "One-time import of bots-sidebar plugin storage into Bots Fleet", usage: "bb bots migrate-from bots-sidebar [--json]" },
       ...FLEET_COMMANDS,
     ],
     async run(argv, ctx) {
       try {
         if (argv[0] === "memory") return await runBotsMemoryCommand(argv.slice(1), ctx, store, memory);
+        if (argv[0] === "migrate-from") {
+          if (ctx.threadId) throw new Error("bb bots migrate-from is operator-only and cannot run from a BB thread");
+          const json = argv.includes("--json");
+          const source = argv.find((arg) => arg !== "migrate-from" && arg !== "--json" && !arg.startsWith("--"));
+          if (!source || argv.some((arg) => arg.startsWith("--") && arg !== "--json")) {
+            throw new Error("Usage: bb bots migrate-from bots-sidebar [--json]");
+          }
+          const result = await migrateFromPlugin(bb, store, source);
+          return {
+            exitCode: 0,
+            stdout: json ? JSON.stringify(result) : `Migrated ${result.botCount} bots and ${result.bindingCount} conversation bindings from ${result.sourcePluginId}.`,
+          };
+        }
         if (!argv.length || argv[0] === "--help" || argv[0] === "help") return { exitCode: 0, stdout: USAGE };
         const fleet = new Set(FLEET_COMMANDS.map((command) => command.name));
         if (fleet.has(argv[0] as typeof FLEET_COMMANDS[number]["name"])) {
@@ -103,6 +121,7 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
         const options = parse(argv);
         if (!options) return { exitCode: 0, stdout: USAGE };
         if (options.command === "list") {
+          const pendingHint = sidebarMigrationPending(bb, store) ? SIDEBAR_MIGRATION_PENDING_WARNING : null;
           const all = store.list();
           const { activity, firstThreads } = await listBotCliActivity(bb, store, resolveOwner, ctx);
           const projects = new Map((await bb.sdk.projects.list()).map(project => [project.id, project.name]));
@@ -122,13 +141,17 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
           }); });
           const nextOffset = options.offset + bots.length < all.length ? options.offset + bots.length : null;
           const value = { bots, total: all.length, nextOffset };
-          return { exitCode: 0, stdout: options.json ? JSON.stringify(value) : [
+          return {
+            exitCode: 0,
+            ...(pendingHint ? { stderr: `${pendingHint}\n` } : {}),
+            stdout: options.json ? JSON.stringify(value) : [
             "BOT ID (MESSAGE TARGET)\tADDRESS\tPARENT\tNAME\tSTATUS\tVISIBILITY\tOWNED PROJECTS\tJOINED PROJECTS\tROLE\tFIRST CONVERSATION",
             ...bots.map((bot) => [bot.id, printable(bot.address), bot.parentName ?? "—", printable(bot.name), bot.status, bot.visibility, bot.ownedProjects.map(p => printable(p.name)).join(", ") || "—", bot.joinedProjects.map(p => printable(p.name)).join(", ") || "—", printable(bot.role), bot.mainThreadId ?? "No conversations"].join("\t")),
             ...(nextOffset !== null ? [`More bots: bb bots list --offset ${nextOffset} --limit ${options.limit}`] : []),
             `${bots.length} shown; ${all.length} total.`,
             'Message: bb bots message <bot-id-or-address> "Your message"',
-          ].join("\n") };
+          ].join("\n"),
+          };
         }
         const [selector, raw] = options.positional as [string, string];
         const message = raw.trim();
@@ -155,7 +178,6 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
   });
   async function resolveSender(ctx: PluginCliContext): Promise<Sender> {
     if (!ctx.threadId) return null;
-    // Verify the invoking conversation exists; never accept a caller-supplied bot name.
     await bb.sdk.threads.get({ threadId: ctx.threadId });
     const id = await resolveOwner(ctx.threadId, false);
     return { threadId: ctx.threadId, bot: id ? store.require(id) : null };

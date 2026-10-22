@@ -7,6 +7,7 @@ import { createBotOps } from "./lib/bot-ops";
 import { memoryFacts, mutateStateDocument } from "./lib/state-actions";
 import { createLegacyImporter } from "./lib/migrate-bots";
 import { browseProjectDirectory, createWorkProject } from "./lib/project-creation";
+import { isFleetPluginOrigin } from "./lib/bot-plugin-origins";
 import { registerBotsCli } from "./lib/bots-cli";
 import { createBotMemory } from "./lib/bot-memory";
 import { botMemoryToolSchema } from "./lib/bot-memory-tool";
@@ -72,7 +73,7 @@ export default async function plugin(bb: BbPluginApi) {
     if (existing) return existing;
     // Our creation request carries a durable explicit choice. A fire-and-forget
     // creation event must not let the project default claim it before dispatch.
-    if (atCreation && thread.originPluginId === bb.pluginId) return null;
+    if (atCreation && isFleetPluginOrigin(thread.originPluginId, bb.pluginId)) return null;
     const inherited = thread.parentThreadId || thread.sourceThreadId ? await resolveOwner(thread.id, false) : null;
     if (inherited) {
       let projectToJoin: string | null = null;
@@ -86,7 +87,7 @@ export default async function plugin(bb: BbPluginApi) {
       if (adopted.changed) publish();
       return adopted.botId;
     }
-    if (thread.originPluginId === bb.pluginId || (!atCreation && thread.status !== "pending")) return null;
+    if (isFleetPluginOrigin(thread.originPluginId, bb.pluginId) || (!atCreation && thread.status !== "pending")) return null;
     const assigned = store.bindProjectDefault(thread.id, thread.projectId, thread.createdAt);
     if (assigned) publish();
     return assigned;
@@ -203,7 +204,7 @@ export default async function plugin(bb: BbPluginApi) {
     for (const block of ctx.input.blocks) {
       if (block.type !== "text" || block.visibility !== "agent-only") continue;
       const token = block.text.match(START_MARKER)?.[1];
-      if (!token || ctx.thread.originPluginId !== bb.pluginId) continue;
+      if (!token || !isFleetPluginOrigin(ctx.thread.originPluginId, bb.pluginId)) continue;
       const start = store.pendingStartContext(token);
       if (!start) continue;
       if (start.projectId === null) await validateConversationProject(store.require(start.botId), ctx.thread.projectId);

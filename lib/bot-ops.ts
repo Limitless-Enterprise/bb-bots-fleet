@@ -4,6 +4,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { z } from "zod";
 import type { BotMetadata, rpcContract } from "../contract";
 import { EMPTY_HASHES, nextTimestamp, type BotStore } from "./bot-store";
+import { SIDEBAR_MIGRATION_PENDING_CREATE_ERROR, sidebarMigrationPending } from "./migrate-bots";
 import { applyState, BotStateConflictError, type PrivateBotState, stateContent } from "./private-state";
 
 const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
@@ -90,6 +91,7 @@ export function createBotOps(deps: BotOpsDeps) {
 
   async function createBot({ name, role, hostId, avatar, sectionId, linkedProjectIds, ownedProjectIds, soul, memory, settings, launchPreset, nodeId = null, parentBotId = null }: z.infer<typeof rpcContract.bot_create.input> & { nodeId?: string | null; parentBotId?: string | null }) {
     return serial("registry", async () => {
+      if (sidebarMigrationPending(bb, store)) throw new Error(SIDEBAR_MIGRATION_PENDING_CREATE_ERROR);
       await importLegacy(); await validateLinks(linkedProjectIds); if (ownedProjectIds) await validateLinks(ownedProjectIds); validateSection(sectionId);
       if (!(await bb.sdk.hosts.list()).some((host) => host.id === hostId)) throw new Error("Choose an enrolled execution machine");
       const id = `bot_${randomUUID().replaceAll("-", "")}`;
