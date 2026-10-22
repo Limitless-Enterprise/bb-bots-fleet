@@ -1,7 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { metadataSchema, sectionSchema, type BotMetadata, type BotSection } from "../contract";
-import { createBotNodeStore, validateBotRegistry, type BotNode } from "./bot-nodes";
+import { createBotNodeStore, validateBotSave, type BotNode } from "./bot-nodes";
 
 export function createBotStore(bb: BbPluginApi) {
   const db = bb.storage.database();
@@ -66,11 +66,12 @@ export function createBotStore(bb: BbPluginApi) {
     .map((row) => decode(row.data)).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
   const save = (bot: BotMetadata) => db.transaction(() => {
     const value = metadataSchema.parse({ nodeId: null, parentBotId: null, ...bot });
+    const previousRow = raw(bot.id);
+    const previous = previousRow ? decode(previousRow.data) : null;
     const peers = list().filter((entry) => entry.id !== value.id);
-    validateBotRegistry(nodes.list(), [...peers, value]);
-    const previous = raw(bot.id);
-    if (previous) {
-      const legacy = legacySchema.safeParse(JSON.parse(previous.data));
+    validateBotSave(nodes.list(), value, peers, previous);
+    if (previousRow) {
+      const legacy = legacySchema.safeParse(JSON.parse(previousRow.data));
       if (legacy.success) {
         if (!state(`legacy-state:${bot.id}`)) setState(`legacy-state:${bot.id}`, { hostId: legacy.data.hostId, path: legacy.data.homePath, homeProjectId: legacy.data.homeProjectId });
         if (!state(`legacy-record:${bot.id}`)) setState(`legacy-record:${bot.id}`, legacy.data);

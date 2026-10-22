@@ -14,15 +14,21 @@ export function resolveBotSelector(store: BotStore, selector: string): BotMetada
   const byId = bots.find((bot) => bot.id === selector);
   if (byId) return byId;
   if (selector.includes("/")) {
-    const slash = selector.lastIndexOf("/");
-    const nodePath = selector.slice(0, slash);
-    const name = selector.slice(slash + 1);
-    if (!name) throw new Error(`Invalid bot address: ${selector}`);
-    const node = store.nodes.list();
-    const resolved = resolveNodePath(node, nodePath);
-    const match = bots.find((bot) => (bot.nodeId ?? null) === resolved.id && bot.name === name);
-    if (!match) throw new Error(`Bot not found: ${selector}`);
-    return match;
+    try {
+      const slash = selector.lastIndexOf("/");
+      const nodePath = selector.slice(0, slash);
+      const name = selector.slice(slash + 1);
+      if (!name) throw new Error(`Invalid bot address: ${selector}`);
+      const resolved = resolveNodePath(nodes, nodePath);
+      const match = bots.find((bot) => (bot.nodeId ?? null) === resolved.id && bot.name === name);
+      if (!match) throw new Error(`Bot not found: ${selector}`);
+      return match;
+    } catch (error) {
+      const legacy = bots.filter((bot) => bot.name === selector);
+      if (legacy.length === 1) return legacy[0]!;
+      if (legacy.length > 1) throw new Error("Several bots have that legacy slash name. Use a bot id.");
+      throw error;
+    }
   }
   const shared = bots.filter((bot) => !(bot.nodeId ?? null) && bot.name === selector);
   if (shared.length === 1) return shared[0]!;

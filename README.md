@@ -408,6 +408,14 @@ update route through the same registry validation and private-state mirroring
 as the sidebar; link, unlink, and release adjust project membership and
 ownership atomically.
 
+Fleet registry commands (`node create`, `create`, `update`, `link`, `unlink`,
+`release`, and later `main` / `deploy`) refuse calls that carry a BB thread
+context (`ctx.threadId`), except when the invoking conversation resolves through
+`resolveOwner` to the shared `fleet` steward bot. `show`, `tree`, and `list`
+stay readable from any conversation. On a single machine and OS user this is
+policy-enforced, not isolation: an operator shell can still run the same
+commands without a thread context.
+
 Incoming bot messages use BB's native attributed, expandable agent-message row
 and sender-conversation link. Inside it, a **🤖 Bot message · Name** heading and
 the original message come first; delivery context and the exact reply command follow

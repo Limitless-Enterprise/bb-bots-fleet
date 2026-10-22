@@ -76,7 +76,7 @@ describe("fleet cli", () => {
     host.store.bind("worker-thread", worker.id);
     const blocked = await run(["update", worker.id, "--role", "Changed"], { threadId: "worker-thread" });
     expect(blocked.exitCode).toBe(1);
-    expect(blocked.stderr).toContain("operator-only");
+    expect(blocked.stderr).toContain("fleet steward");
     const fleet = host.store.list().find((bot) => bot.name === "fleet")!;
     host.threads.set("fleet-thread", makeThreadResponse({ id: "fleet-thread", projectId: "project" }));
     host.store.bind("fleet-thread", fleet.id);

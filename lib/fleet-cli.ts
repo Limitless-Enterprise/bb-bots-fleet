@@ -6,7 +6,7 @@ import { avatarSchema } from "../contract";
 import type { BotMemory } from "./bot-memory";
 import type { BotStore } from "./bot-store";
 import type { createBotOps } from "./bot-ops";
-import { newNodeId, nodePathSegments, nodeDisplayPath, resolveNodePath, type BotNode, type BotNodeMetadata } from "./bot-nodes";
+import { assertAppNodeNameAvailable, newNodeId, nodePathSegments, nodeDisplayPath, resolveNodePath, validateFoldedIntoAddress, validateSchemaNodeMetadata, type BotNode, type BotNodeMetadata } from "./bot-nodes";
 import { listBotCliActivity } from "./bot-cli-activity";
 import { botAddress, parentBotLabel, resolveBotSelector, resolveMachine, resolveProject } from "./fleet-resolve";
 import { assertFleetRegistryOperator, assertFleetSoulMutationFromThread, isFleetSteward } from "./fleet-authz";
@@ -69,16 +69,19 @@ async function machineId(bb: BbPluginApi, selector: string) {
   return (await resolveMachine(bb, selector)).id;
 }
 
-function callerBot(ctx: PluginCliContext, store: BotStore): BotMetadata | null {
+async function callerBot(ctx: PluginCliContext, store: BotStore, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>): Promise<BotMetadata | null> {
   const threadId = ctx.threadId;
   if (!threadId) return null;
-  const botId = store.owner(threadId);
+  let botId = store.owner(threadId);
+  if (!botId) {
+    try { botId = await resolveOwner(threadId, false); } catch { return null; }
+  }
   return botId ? store.get(botId) : null;
 }
 
 export async function runFleetCommand(command: string, argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, memory: BotMemory): Promise<{ exitCode: number; stdout?: string; stderr?: string }> {
   try {
-    const caller = callerBot(ctx, store);
+    const caller = await callerBot(ctx, store, resolveOwner);
     if (command === "node") {
       assertFleetRegistryOperator(ctx, caller);
       return await runNode(argv, ctx, bb, store);
@@ -123,7 +126,7 @@ async function runNode(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, s
     const nodes = store.nodes.list();
     if (kind === "app") {
       if (parts.length !== 1) throw new Error("App node path must be a single name");
-      if (store.nodes.findByParentAndName(null, parts[0]!)) throw new Error(`App node already exists: ${parts[0]}`);
+      assertAppNodeNameAvailable(nodes, store.list(), parts[0]!);
       const projectId = flags.project ? (await resolveProject(bb, String(flags.project))).id : null;
       const node: BotNode = { id: newNodeId(), kind: "app", name: parts[0]!, parentNodeId: null, projectId, sectionId: null, metadata: {}, createdAt: Date.now() };
       store.nodes.save(node);
@@ -138,6 +141,8 @@ async function runNode(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, s
     if (flags["data-service-path"]) metadata.dataServicePath = String(flags["data-service-path"]);
     if (flags.database) metadata.database = String(flags.database);
     if (flags["folded-into"]) metadata.foldedInto = String(flags["folded-into"]);
+    validateSchemaNodeMetadata(nodes, app, metadata);
+    if (metadata.foldedInto) validateFoldedIntoAddress(nodes, store.list(), app, metadata.foldedInto);
     const node: BotNode = { id: newNodeId(), kind: "schema", name: parts[1]!, parentNodeId: app.id, projectId: null, sectionId: null, metadata, createdAt: Date.now() };
     store.nodes.save(node);
     const out = { node, created: true };
@@ -327,15 +332,15 @@ async function runTree(argv: string[], _ctx: PluginCliContext, store: BotStore) 
     }
     if (!selected.length) throw new Error(`App not found: ${filter}`);
   }
-  const blocks = selected.map((app) => formatAppTree(app, nodes, bots));
   const shared = bots.filter((bot) => !(bot.nodeId ?? null));
+  const blocks = selected.map((app) => formatAppTree(app, nodes, bots, shared));
   const payload = { apps: blocks, shared: shared.map((bot) => ({ id: bot.id, name: bot.name, address: bot.name })) };
   if (json) return { exitCode: 0, stdout: JSON.stringify(payload) };
   const lines = [...blocks.flatMap((block) => block.lines), "fleet:", ...shared.map((bot) => `  ${bot.name}`)];
   return { exitCode: 0, stdout: lines.join("\n") };
 }
 
-function formatAppTree(app: BotNode, nodes: BotNode[], bots: BotMetadata[]) {
+function formatAppTree(app: BotNode, nodes: BotNode[], bots: BotMetadata[], shared: BotMetadata[]) {
   const appBots = bots.filter((bot) => (bot.nodeId ?? null) === app.id);
   const roots = appBots.filter((bot) => !(bot.parentBotId ?? null));
   const members = appBots.filter((bot) => bot.parentBotId);
@@ -354,6 +359,11 @@ function formatAppTree(app: BotNode, nodes: BotNode[], bots: BotMetadata[]) {
     else {
       for (const bot of schemaBots) lines.push(`    ${botAddress(nodes, bot)}`);
       if (!schemaBots.some((bot) => bot.name === "data")) lines.push(`    ${path}/data (missing)`);
+    }
+  }
+  if (app.projectId) {
+    for (const bot of shared) {
+      if (bot.linkedProjectIds.includes(app.projectId)) lines.push(`  ${bot.name} (engaged)`);
     }
   }
   return { app: app.name, lines };

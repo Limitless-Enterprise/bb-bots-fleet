@@ -108,36 +108,77 @@ export function nodeDisplayPath(nodes: BotNode[], nodeId: string | null | undefi
   return segments.length ? segments.join("/") : null;
 }
 
-export function validateBotRegistry(nodes: BotNode[], bots: BotMetadata[]) {
+/** Validates one bot on save; legacy duplicate shared names and slash names are left untouched until renamed. */
+export function validateBotSave(nodes: BotNode[], bot: BotMetadata, peers: BotMetadata[], previous: BotMetadata | null) {
+  const nameChanged = !previous || previous.name !== bot.name;
+  const nodeChanged = !previous || (previous.nodeId ?? null) !== (bot.nodeId ?? null);
+  if (nameChanged && bot.name.includes("/")) throw new Error("Bot name must not contain '/'");
   const appNames = new Set(nodes.filter((node) => node.kind === "app" && !node.parentNodeId).map((node) => node.name));
-  const byId = new Map(bots.map((bot) => [bot.id, bot]));
-  const keyed = new Map<string, BotMetadata>();
-  for (const bot of bots) {
-    if (bot.name.includes("/")) throw new Error(`Bot name must not contain '/': ${bot.name}`);
-    const nodeId = bot.nodeId ?? null;
-    if (nodeId) {
-      const key = `${nodeId}\0${bot.name}`;
-      if (keyed.has(key)) throw new Error(`Duplicate bot address: ${bot.name}`);
-      keyed.set(key, bot);
-      if (!nodes.some((node) => node.id === nodeId)) throw new Error(`Node not found for bot: ${bot.name}`);
-    }
-    if (!nodeId && appNames.has(bot.name)) throw new Error(`Shared bot name collides with app node: ${bot.name}`);
-    if (!nodeId && (bot.parentBotId ?? null)) throw new Error("Shared bots cannot have a parent bot");
-    const parentId = bot.parentBotId ?? null;
-    if (parentId) {
-      if (parentId === bot.id) throw new Error("Bot cannot be its own parent");
-      const parent = byId.get(parentId);
-      if (!parent) throw new Error(`Parent bot not found: ${parentId}`);
-      if (parent.parentBotId ?? null) throw new Error("Parent must be the app lead");
-      const childApp = appNodeIdForBot(nodes, bot);
-      const parentApp = appNodeIdForBot(nodes, parent);
-      if (!childApp || !parentApp || childApp !== parentApp) throw new Error("Member parent must be the lead of the same app");
-      let walk: string | null = parentId;
-      while (walk) {
-        if (walk === bot.id) throw new Error("Bot parent chain cannot cycle");
-        walk = byId.get(walk)?.parentBotId ?? null;
+  const nodeId = bot.nodeId ?? null;
+  if (nodeId) {
+    const node = nodes.find((entry) => entry.id === nodeId);
+    if (!node) throw new Error(`Node not found for bot: ${bot.name}`);
+    validateBotPlacement(nodes, bot, peers, node);
+    if (nameChanged || nodeChanged) {
+      if (peers.some((peer) => (peer.nodeId ?? null) === nodeId && peer.name === bot.name)) {
+        throw new Error(`Duplicate bot address: ${bot.name}`);
       }
     }
+  } else {
+    if (appNames.has(bot.name)) throw new Error(`Shared bot name collides with app node: ${bot.name}`);
+    if (bot.parentBotId ?? null) throw new Error("Shared bots cannot have a parent bot");
+  }
+  const parentId = bot.parentBotId ?? null;
+  if (!parentId) return;
+  if (parentId === bot.id) throw new Error("Bot cannot be its own parent");
+  const parent = peers.find((peer) => peer.id === parentId) ?? null;
+  if (!parent) throw new Error(`Parent bot not found: ${parentId}`);
+  if (parent.parentBotId ?? null) throw new Error("Parent must be the app lead");
+  const childApp = appNodeIdForBot(nodes, bot);
+  const parentApp = appNodeIdForBot(nodes, parent);
+  if (!childApp || !parentApp || childApp !== parentApp) throw new Error("Member parent must be the lead of the same app");
+  let walk: string | null = parentId;
+  const byId = new Map([...peers, bot].map((entry) => [entry.id, entry]));
+  while (walk) {
+    if (walk === bot.id) throw new Error("Bot parent chain cannot cycle");
+    walk = byId.get(walk)?.parentBotId ?? null;
+  }
+}
+
+function validateBotPlacement(nodes: BotNode[], bot: BotMetadata, peers: BotMetadata[], node: BotNode) {
+  if (node.kind === "schema" && node.metadata.foldedInto) {
+    throw new Error(`Schema node is folded into ${node.metadata.foldedInto}; bots cannot be attached here`);
+  }
+  if (node.kind === "schema" && bot.name === "data") {
+    const existing = peers.find((peer) => (peer.nodeId ?? null) === node.id && peer.name === "data");
+    if (existing) throw new Error("Schema node already has a data bot");
+  }
+}
+
+export function assertAppNodeNameAvailable(nodes: BotNode[], bots: BotMetadata[], appName: string) {
+  if (bots.some((bot) => !(bot.nodeId ?? null) && bot.name === appName)) {
+    throw new Error(`Shared bot name collides with app node: ${appName}`);
+  }
+  if (nodes.some((node) => node.kind === "app" && !node.parentNodeId && node.name === appName)) {
+    throw new Error(`App node already exists: ${appName}`);
+  }
+}
+
+export function validateSchemaNodeMetadata(nodes: BotNode[], app: BotNode, metadata: BotNodeMetadata) {
+  if (metadata.foldedInto && (metadata.dataServicePath || metadata.database)) {
+    throw new Error("Schema node cannot set folded-into together with data-service-path or database");
+  }
+}
+
+export function validateFoldedIntoAddress(nodes: BotNode[], bots: BotMetadata[], app: BotNode, foldedInto: string) {
+  const matches = bots.filter((bot) => {
+    const path = nodeDisplayPath(nodes, bot.nodeId ?? null);
+    return (path ? `${path}/${bot.name}` : bot.name) === foldedInto;
+  });
+  if (matches.length !== 1) throw new Error(`folded-into target not found: ${foldedInto}`);
+  const suffix = foldedInto.slice(app.name.length + 1);
+  if (!foldedInto.startsWith(`${app.name}/`) || (suffix !== "api" && suffix !== "builder")) {
+    throw new Error("folded-into must name an existing <app>/api or <app>/builder bot");
   }
 }
 

@@ -9,7 +9,7 @@ export function isFleetSteward(bot: BotMetadata | null | undefined): boolean {
 export function assertFleetRegistryOperator(ctx: PluginCliContext, callerBot: BotMetadata | null) {
   if (!ctx.threadId) return;
   if (isFleetSteward(callerBot)) return;
-  throw new Error("Fleet registry commands are operator-only and cannot run from a BB thread");
+  throw new Error("Fleet registry commands are operator-only and cannot run from a BB thread unless the caller is the fleet steward bot");
 }
 
 export function assertFleetSoulMutationFromThread(ctx: PluginCliContext, callerBot: BotMetadata | null, changingSoul: boolean) {
