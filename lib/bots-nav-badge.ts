@@ -9,7 +9,9 @@ export function useBotsNavBadge(): ExperimentalBadge | null {
   if (sidebar.status !== "ready") return null;
 
   const visible = sidebar.threads.filter((thread) => !thread.isArchived);
-  const waiting = visible.filter((thread) => thread.hasPendingInteraction).length;
+  const waiting = visible.filter(
+    (thread) => thread.hasPendingInteraction || thread.indicator === "waiting-for-input",
+  ).length;
   if (waiting > 0) {
     const label = waiting === 1
       ? "1 conversation waiting for your input"

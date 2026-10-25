@@ -155,7 +155,11 @@ describe("nav badge hook", () => {
     const badge = botsNavPanel(app).experimental_useBadge!;
     function Probe() {
       const value = badge() as import("@get-bb/plugin-sdk/app").ExperimentalBadge | null;
-      return <span data-testid="badge">{value ? `${value.count ?? "dot"}:${value.label}` : "none"}</span>;
+      return (
+        <span data-testid="badge" data-tone={value?.tone ?? ""}>
+          {value ? `${value.count ?? "dot"}:${value.label}` : "none"}
+        </span>
+      );
     }
     const slot = renderSlot({ component: Probe }, {}, {
       sidebarThreads: {
@@ -167,5 +171,45 @@ describe("nav badge hook", () => {
       },
     });
     expect(slot.getByTestId("badge").textContent).toContain("1 conversation waiting");
+  });
+
+  it("counts waiting-for-input indicator without pending interaction", () => {
+    const badge = botsNavPanel(app).experimental_useBadge!;
+    function Probe() {
+      const value = badge() as import("@get-bb/plugin-sdk/app").ExperimentalBadge | null;
+      return (
+        <span data-testid="badge" data-tone={value?.tone ?? ""}>
+          {value ? `${value.count ?? "dot"}:${value.label}` : "none"}
+        </span>
+      );
+    }
+    const slot = renderSlot({ component: Probe }, {}, {
+      sidebarThreads: {
+        projects: [],
+        threads: [thread("waiting", 1, { indicator: "waiting-for-input" })],
+      },
+    });
+    expect(slot.getByTestId("badge").getAttribute("data-tone")).toBe("warning");
+    expect(slot.getByTestId("badge").textContent).toBe("1:1 conversation waiting for your input");
+  });
+
+  it("shows critical dot badge for unread error conversations", () => {
+    const badge = botsNavPanel(app).experimental_useBadge!;
+    function Probe() {
+      const value = badge() as import("@get-bb/plugin-sdk/app").ExperimentalBadge | null;
+      return (
+        <span data-testid="badge" data-tone={value?.tone ?? ""}>
+          {value ? `${value.count ?? "dot"}:${value.label}` : "none"}
+        </span>
+      );
+    }
+    const slot = renderSlot({ component: Probe }, {}, {
+      sidebarThreads: {
+        projects: [],
+        threads: [thread("err", 1, { isUnread: true, indicator: "unread-error" })],
+      },
+    });
+    expect(slot.getByTestId("badge").getAttribute("data-tone")).toBe("critical");
+    expect(slot.getByTestId("badge").textContent).toBe("dot:1 unread conversation with an error");
   });
 });
