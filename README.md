@@ -199,8 +199,10 @@ in bot state.
 
 Bots Fleet registers BB's **Bots** navigation-rail panel: the familiar sidebar
 tree on the left and conversation content on the right. The rail icon can show a
-badge—a warning count when conversations wait for your input, or a critical dot
-when unread conversations have errors (no count).
+badge for **bot-assigned** conversations only (explicit bindings and child
+threads that inherit a bound ancestor—not unassigned **Chats**): a warning count
+when those conversations wait for your input, or a critical dot when unread
+assigned conversations have errors (no count).
 
 - The panel home offers **Create bot** and **New chat** when no conversation is
   selected.

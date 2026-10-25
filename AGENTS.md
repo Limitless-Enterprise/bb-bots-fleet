@@ -86,7 +86,9 @@ Register BB's **Bots** nav panel via `app.slots.navPanel` (`BotsPage`,
 `experimental_threadList`. User-facing rail behavior is in README § Bots
 navigation rail; row navigation defaults to in-panel `thread/<id>`;
 Cmd/Ctrl-click and **Open in BB** use `navigate.toThread` (split with the
-modifier).
+modifier). Nav rail badge counts only bot-owned threads (`bots_list`
+threadBindings plus `conversationOwners` inheritance); unassigned Chats never
+contribute.
 
 Preserve the approved interaction model below. An older source snapshot once
 reintroduced removed controls during development. Do not restore old snapshots
