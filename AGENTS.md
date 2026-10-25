@@ -81,6 +81,13 @@ existing conversation histories and track legacy home project IDs for compatibil
 
 # Bots sidebar UX contract
 
+Register BB's **Bots** nav panel via `app.slots.navPanel` (`BotsPage`,
+`experimental_sidebar`, `experimental_useBadge`). Do not restore
+`experimental_threadList`. User-facing rail behavior is in README § Bots
+navigation rail; row navigation defaults to in-panel `thread/<id>`;
+Cmd/Ctrl-click and **Open in BB** use `navigate.toThread` (split with the
+modifier).
+
 Preserve the approved interaction model below. An older source snapshot once
 reintroduced removed controls during development. Do not restore old snapshots
 or reintroduce hover toolbars when making unrelated changes.

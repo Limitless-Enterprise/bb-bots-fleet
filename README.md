@@ -195,7 +195,25 @@ Unused optional tool fields may be omitted or null. Shared memory, routines,
 channels, and scheduled skills are deliberately out of scope. Never store secrets
 in bot state.
 
+## Bots navigation rail
+
+Bots Fleet registers BB's **Bots** navigation-rail panel: the familiar sidebar
+tree on the left and conversation content on the right. The rail icon can show a
+badge—a warning count when conversations wait for your input, or a critical dot
+when unread conversations have errors (no count).
+
+- The panel home offers **Create bot** and **New chat** when no conversation is
+  selected.
+- Click a sidebar row to open that conversation **in the panel** with full
+  `ThreadChat` (permissions inherit from the conversation).
+- **Open in BB** in the panel header opens the same conversation in BB's main
+  workspace. Hold **Cmd** (macOS) or **Ctrl** (other platforms) when clicking a
+  sidebar row or **Open in BB** to open it in a split main-workspace view
+  instead.
+
 ## Sidebar interactions
+
+Within the Bots nav rail, the sidebar tree behaves as follows:
 
 - Click a bot to open the **first conversation in its list**, without expanding
   or collapsing it. The end chevron independently toggles the full list and
