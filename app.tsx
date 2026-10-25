@@ -646,7 +646,7 @@ function BotsPage({ subPath }: PluginNavPanelProps) {
           size="sm"
           variant="outline"
           onClick={(event) => {
-            openBotsThread(navigate, threadId, event);
+            navigate.toThread(threadId, { split: event.metaKey || event.ctrlKey });
           }}
         >
           Open in BB

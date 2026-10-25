@@ -44,6 +44,34 @@ describe("in-panel navigation", () => {
     fireEvent.click(slot.getByText("Conversation 0"));
     expect(slot.inspection.navigateCalls).toContainEqual(botsPanelNavigateCall("0"));
   });
+
+  it("opens conversations in split with metaKey", async () => {
+    const slot = renderBotsSidebar(app, "thread/main", {
+      sidebarThreads: {
+        projects: [{ id: "project", name: "Test bot", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" }],
+        threads: [thread("main", 1000), thread("0", 100)],
+      },
+      rpc: {
+        bots_list: () => ({
+          personalProjectId,
+          bots: [bot],
+          hosts: [{ id: "host", name: "Local", connected: true }],
+          sections: [],
+          projects: [{ id: "project", name: "Project" }],
+          threadBindings: [{ threadId: "main", botId: bot.id }, { threadId: "0", botId: bot.id }],
+          warnings: [],
+        }),
+      },
+    });
+    await slot.findByText("Test bot");
+    fireEvent.click(slot.getByRole("button", { name: "Expand conversations for Test bot" }));
+    fireEvent.click(slot.getByText("Conversation 0"), { metaKey: true });
+    expect(slot.inspection.navigateCalls).toContainEqual({
+      method: "toThread",
+      threadId: "0",
+      options: { split: true },
+    });
+  });
 });
 
 describe("bots page", () => {
@@ -86,8 +114,39 @@ describe("bots page", () => {
       },
     });
     fireEvent.click(slot.getByRole("button", { name: "Open in BB" }));
-    expect(slot.inspection.navigateCalls).toContainEqual(botsPanelNavigateCall("main"));
+    expect(slot.inspection.navigateCalls).toContainEqual({
+      method: "toThread",
+      threadId: "main",
+      options: { split: false },
+    });
     expect(slot.getByTestId("bb-thread-chat")).toBeTruthy();
+  });
+
+  it("opens in BB split when Open in BB is clicked with metaKey", async () => {
+    const Page = botsNavPanel(app).component;
+    const slot = renderSlot({ component: Page }, { subPath: "thread/main" }, {
+      sidebarThreads: {
+        projects: [],
+        threads: [thread("main", 1, { title: "Hello thread" })],
+      },
+      rpc: {
+        bots_list: () => ({
+          personalProjectId,
+          bots: [bot],
+          hosts: [],
+          sections: [],
+          projects: [],
+          threadBindings: [{ threadId: "main", botId: bot.id }],
+          warnings: [],
+        }),
+      },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Open in BB" }), { metaKey: true });
+    expect(slot.inspection.navigateCalls).toContainEqual({
+      method: "toThread",
+      threadId: "main",
+      options: { split: true },
+    });
   });
 });
 
