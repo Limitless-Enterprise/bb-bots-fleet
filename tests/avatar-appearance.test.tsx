@@ -2,7 +2,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AvatarAppearance } from "../components/avatar-appearance";
 import { BotIcon, Eyes } from "../components/bot-icon";
@@ -31,10 +32,7 @@ function mountPanel(avatar = base, onChange = vi.fn()) {
 }
 
 async function mountSidebar() {
-  const slot = renderSlot(app.threadLists[0]!, {
-    activeThreadId: "main", activeProjectId: "project", isCompactViewport: false,
-    onNavigate: vi.fn(), searchQuery: "",
-  }, {
+  const slot = renderBotsSidebar(app, "thread/main", {
     sidebarThreads: {
       projects: [{ id: "project", name: "Test bot", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" }],
       threads: [thread("main", 1000)],

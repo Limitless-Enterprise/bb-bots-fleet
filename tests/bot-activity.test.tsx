@@ -2,7 +2,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { BotActivityBadge } from "../components/bot-activity-badge";
 import { bot, personalProjectId, thread } from "./fixtures";
 
@@ -88,7 +89,7 @@ const app = await loadPluginApp(() => import("../app"));
 it("shows collapsed activity at the avatar without mixing bot ownership or changing child disclosure", async () => {
   const onNavigate = vi.fn();
   const rows = [running("main"), { ...running("child"), parentThreadId: "main" }, running("topic"), running("second-topic"), running("another-bot"), running("unassigned")];
-  const slot = renderSlot(app.threadLists[0]!, { activeThreadId: null, activeProjectId: "project", isCompactViewport: false, onNavigate, searchQuery: "" }, {
+  const slot = renderBotsSidebar(app, "", {
     sidebarThreads: { projects: [{ id: "project", name: "Shared project", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" }], threads: rows },
     rpc: { bots_list: () => ({ bots: [bot, { ...bot, id: "other-bot", name: "Other bot", mainThreadId: "another-bot" }], hosts: [], sections: [], projects: [], personalProjectId, warnings: [], threadBindings: rows.filter(row => row.id !== "unassigned").map(row => ({ threadId: row.id, botId: row.id === "another-bot" ? "other-bot" : bot.id })) }) },
   });

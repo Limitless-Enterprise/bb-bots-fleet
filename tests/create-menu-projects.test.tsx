@@ -3,7 +3,8 @@ import { selectOption } from "./select-helper";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { rpcContract, type BotMetadata } from "../contract";
 import { bot, personalProjectId } from "./fixtures";
 
@@ -14,7 +15,7 @@ async function mount({ projectFailures = 0, botFailures = 0, offline = false } =
   const projects = [{ id: "existing", name: "Existing work" }];
   const sections: { id: string; name: string; order: number }[] = [];
   const onNavigate = vi.fn();
-  const slot = renderSlot(app.threadLists[0]!, { activeThreadId: null, activeProjectId: null, isCompactViewport: false, onNavigate, searchQuery: "" }, {
+  const slot = renderBotsSidebar(app, "", {
     sidebarThreads: { projects: [], threads: [] }, rpc: {
       bots_list: () => ({ bots, projects, sections, hosts: [{ id: "host", name: "Local", connected: !offline }, { id: "remote", name: "Remote", connected: !offline }], personalProjectId, warnings: [], threadBindings: [], projectOwners: [] }),
       section_create: (raw) => { const { name } = rpcContract.section_create.input.parse(raw); const section = { id: "section", name, order: 0 }; sections.push(section); return section; },
@@ -78,7 +79,7 @@ it("creates a standalone work project on the selected host without making a bot"
   fireEvent.click(within(dialog).getByRole("button", { name: "Create project" }));
   await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
   expect(slot.inspection.rpcCalls).toContainEqual({ method: "project_create", input: { requestId: expect.any(String), name: "Client app", hostId: "remote", path: "/work/client-app" } });
-  expect(bots).toEqual([]); expect(onNavigate).toHaveBeenCalledOnce();
+  expect(bots).toEqual([]);
   expect(slot.inspection.navigateCalls).toContainEqual({ method: "toProject", projectId: "new-project" });
 });
 

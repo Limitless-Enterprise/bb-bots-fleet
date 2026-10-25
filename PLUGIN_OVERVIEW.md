@@ -4,7 +4,7 @@ Give recurring work a named specialist without tying its identity to one reposit
 
 - Named bots with configurable avatars, their own instructions, up to 3,000 characters of `MEMORY.md`, and private structured level-1 memory entries per bot.
 - Per-bot defaults for new conversations: harness, model, reasoning, permissions, starter prompt, and checkout or fresh worktree.
-- A sidebar that groups conversations by bot, keeps active work visible, and folds older chats into expandable trees.
+- A **Bots** navigation-rail panel with the same sidebar tree (bots, conversations, Chats) and in-panel `ThreadChat`, plus a rail badge for conversations waiting for input.
 - Drag-to-bot assignment for existing chats, plus inline archive controls.
 - Project membership and one optional owner per project to route new conversations. Existing conversation assignments stay intact.
 - `@` completion for bot references and attributed asynchronous coordination through `bb bots list` and `bb bots message`, plus a fleet registry CLI (`node`, `create`, `update`, `show`, `tree`, `link`, `unlink`, `release`) for app nodes and bot addresses.
@@ -17,4 +17,4 @@ Bot state lives in BB's private plugin storage, not in project files. Agents rea
 
 ## Requirements
 
-Requires BB 0.46.1 or newer with Plugin SDK 0.6.49 or newer and a configured agent provider. No additional account or external service is required; your provider's normal costs apply. Bot instructions and memory enter the provider's context when its conversations run. Plugins run with BB's full trust; bot membership is not a security boundary. Project-folder creation accepts POSIX paths (including WSL), not native Windows paths.
+Requires BB 0.46.1 or newer with Plugin SDK 0.6.79 or newer (nav-panel sidebar and in-panel chat) and a configured agent provider. No additional account or external service is required; your provider's normal costs apply. Bot instructions and memory enter the provider's context when its conversations run. Plugins run with BB's full trust; bot membership is not a security boundary. Project-folder creation accepts POSIX paths (including WSL), not native Windows paths.

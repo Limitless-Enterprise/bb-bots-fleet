@@ -2,7 +2,8 @@
 import { afterEach, expect, it } from "vitest";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { bot, personalProjectId, thread } from "./fixtures";
 
 const app = await loadPluginApp(() => import("../app"));
@@ -10,7 +11,7 @@ afterEach(cleanup);
 
 it("keeps the role and owned projects in the bot subtitle through folding and ownership updates", async () => {
   let owners = [{ botId: bot.id, projectId: "owned" }, { botId: bot.id, projectId: "second" }, { botId: "other", projectId: "member" }];
-  const slot = renderSlot(app.threadLists[0]!, { activeThreadId: null, activeProjectId: "member", isCompactViewport: false, onNavigate() {}, searchQuery: "" }, {
+  const slot = renderBotsSidebar(app, "", {
     sidebarThreads: { projects: [], threads: [thread("main", 100, { projectId: "member", title: "Thread title must not replace role" })] },
     rpc: { bots_list: () => ({ bots: [{ ...bot, role: "Project assistant", linkedProjectIds: ["owned", "second", "member"] }], personalProjectId, hosts: [], sections: [], warnings: [],
       projects: [{ id: "owned", name: "Atlas" }, { id: "second", name: "Beacon" }, { id: "member", name: "Member only" }],

@@ -2,7 +2,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import type { z } from "zod";
 import { rpcContract, type BotMetadata } from "../contract";
 import { bot, personalProjectId, thread } from "./fixtures";
@@ -15,7 +16,7 @@ type Update = z.infer<typeof rpcContract.bot_update.input>;
 async function mount({ update, prepareFailures = 0, expectFailure = false }: { update?: (input: Update) => BotMetadata | Promise<BotMetadata>; prepareFailures?: number; expectFailure?: boolean } = {}) {
   let current: BotMetadata = { ...bot, id: "remote-bot", name: "Remote bot", hostId: "remote", stateReady: false, soul: "Stale cached identity" };
   const onNavigate = vi.fn();
-  const slot = renderSlot(app.threadLists[0]!, { activeThreadId: "main", activeProjectId: "project", isCompactViewport: false, onNavigate, searchQuery: "" }, {
+  const slot = renderBotsSidebar(app, "thread/main", {
     sidebarThreads: { projects: [{ id: "project", name: "Unrelated checkout", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" }], threads: [thread("main", 100)] },
     rpc: {
       bots_list: () => ({ bots: [{ ...current }], hosts: [], sections: [], projects: [], warnings: [], personalProjectId, threadBindings: [{ botId: current.id, threadId: "main" }] }),

@@ -4,7 +4,8 @@ import type { NewThreadComposerProps } from "@get-bb/plugin-sdk/app";
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { rpcContract, type BotMetadata, type ProjectOwner } from "../contract";
 import { bot, personalProjectId, request, thread } from "./fixtures";
 
@@ -29,7 +30,7 @@ async function mount({ bots = [bot], owners = [], rows = [thread("main", 100), t
 } = {}) {
   const state = { bots, owners, personalId: personalProjectId };
   const onNavigate = vi.fn();
-  const slot = renderSlot(app.threadLists[0]!, { activeThreadId: "main", activeProjectId: "project", isCompactViewport: false, onNavigate, searchQuery: "" }, {
+  const slot = renderBotsSidebar(app, "thread/main", {
     sidebarThreads: { projects: [{ id: "project", name: "Member project", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" }, { id: "owned", name: "Owned project", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" }], threads: rows },
     rpc: {
       bots_list: () => { beforeList?.(); return rpcContract.bots_list.output.parse({ bots: state.bots, hosts: [{ id: "host", name: "Local", connected: true }], sections: [], projects: [{ id: "project", name: "Member project" }, { id: "owned", name: "Owned project" }], threadBindings: rows.map(row => ({ botId: bot.id, threadId: row.id })), warnings: [], personalProjectId: state.personalId, projectOwners: state.owners }); },

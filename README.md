@@ -53,7 +53,7 @@ saved presets do not override them.
 [Open the screenshot gallery](docs/screenshots/index.html). All illustrations use
 synthetic data; private-session captures do not belong in published assets.
 
-Demo data only: [Sidebar](docs/screenshots/sidebar.png) ·
+Demo data only: [Bots rail panel](docs/screenshots/sidebar.png) (sidebar + in-panel chat) ·
 [Activity badge](docs/screenshots/bot-activity.png) ·
 [Bot new-conversation action](docs/screenshots/bot-new-chat-hover.png) ·
 [Hover archive](docs/screenshots/conversation-hover.png) ·

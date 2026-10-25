@@ -11,6 +11,7 @@ import {
   useSdk,
   useSidebarThreadShortcut,
   ThreadTitle,
+  ThreadChat,
   experimental_useSidebarThreadSplit,
   experimental_useSidebarThreads,
   useRealtime,
@@ -22,8 +23,10 @@ import type {
   NewThreadRequest,
   PluginSidebarThread,
   BbNavigate,
-  PluginThreadListProps,
+  PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
+import { botsThreadIdFromSubPath, openBotsThread, registerBotsCreateBotHandler, requestBotsCreateBot } from "./lib/bots-panel";
+import { useBotsNavBadge } from "./lib/bots-nav-badge";
 import type { BotAvatar, BotMetadata, BotSection, ProjectOwner, rpcContract } from "./contract";
 import { orderedBotConversationTree, conversationOwners, conversationTree } from "./lib/conversations";
 import { BotPrivateMemoryPanel } from "./components/bot-private-memory-panel";
@@ -407,7 +410,7 @@ function ThreadRow({ thread, siblings, childrenByParent, activePath, navigate, a
     { label: "Move to top", action: () => onReorder(thread.id, siblings[0]!.id, "before"), disabled: siblings[0]?.id === thread.id },
   ]}>
     <div draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/x-bb-thread-id", thread.id); }} className="thread-row flex min-h-7 items-center rounded-md text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground" aria-current={activeThreadId === thread.id ? "page" : undefined} data-active-descendant={!branch.expanded && branch.containsActive}>
-      <a href={thread.href} {...split.splitProps} onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); reorderDrag.begin(thread, event); }} ref={branch.rowRef} role="link" tabIndex={0} aria-current={activeThreadId === thread.id ? "page" : undefined} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); } }} data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id} aria-keyshortcuts={shortcut?.ariaKeyshortcuts} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-1 pr-1" onClick={(event) => { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); }}>
+      <a href={thread.href} {...split.splitProps} onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); reorderDrag.begin(thread, event); }} ref={branch.rowRef} role="link" tabIndex={0} aria-current={activeThreadId === thread.id ? "page" : undefined} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); openBotsThread(navigate, thread.id, event); onNavigate(); } }} data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id} aria-keyshortcuts={shortcut?.ariaKeyshortcuts} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-1 pr-1" onClick={(event) => { event.preventDefault(); openBotsThread(navigate, thread.id, event); onNavigate(); }}>
         <SidebarConversationStatus thread={thread} /><span className="min-w-0 flex-1 truncate"><ThreadTitle threadId={thread.id} /></span>{shortcut ? <kbd className="shrink-0 rounded bg-muted px-1 text-[9px]">{shortcut.label}</kbd> : null}
       </a>
       <ConversationArchiveButton thread={thread} />
@@ -556,14 +559,14 @@ function RecentRow({
         ref={branch.rowRef}
         role="link"
         tabIndex={0}
-        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); } }}
+        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); openBotsThread(navigate, thread.id, event); onNavigate(); } }}
         data-sidebar-thread-shortcut-target=""
         data-sidebar-thread-id={thread.id} aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-0.5"
         aria-current={activeThreadId === thread.id ? "page" : undefined}
         onClick={(event) => {
           event.preventDefault();
-          navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey });
+          openBotsThread(navigate, thread.id, event);
           onNavigate();
         }}
       >
@@ -586,7 +589,79 @@ function RecentRow({
   );
 }
 
-function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
+function BotsPage({ subPath }: PluginNavPanelProps) {
+  const threadId = botsThreadIdFromSubPath(subPath);
+  const navigate = useBbNavigate();
+  const sidebar = experimental_useSidebarThreads();
+  const { bots, threadBindings, personalProjectId } = useBotData();
+  const owners = useMemo(() => conversationOwners(sidebar.threads, threadBindings), [sidebar.threads, threadBindings]);
+  const botId = threadId ? owners.get(threadId) : undefined;
+  const botName = botId ? bots.find((bot) => bot.id === botId)?.name : undefined;
+
+  if (!threadId) {
+    return (
+      <div className="flex h-full min-h-0 flex-col items-center justify-center gap-4 p-6 text-center">
+        <div className="max-w-sm space-y-2">
+          <h2 className="text-base font-semibold text-foreground">Bots Fleet</h2>
+          <p className="text-sm text-muted-foreground">
+            Open a bot or conversation from the sidebar, or start something new here.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button size="sm" onClick={() => requestBotsCreateBot()}>Create bot</Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              navigate.toCompose({
+                ...(personalProjectId ? { projectId: personalProjectId } : {}),
+                focusPrompt: true,
+              });
+            }}
+          >
+            New chat
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-sm">
+        <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1 text-muted-foreground" aria-label="Breadcrumb">
+          <span className="font-medium text-foreground">Bots</span>
+          {botName ? (
+            <>
+              <span aria-hidden="true">›</span>
+              <span className="truncate">{botName}</span>
+            </>
+          ) : null}
+          <span aria-hidden="true">›</span>
+          <span className="min-w-0 truncate text-foreground">
+            <ThreadTitle threadId={threadId} />
+          </span>
+        </nav>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={(event) => {
+            openBotsThread(navigate, threadId, event);
+          }}
+        >
+          Open in BB
+        </Button>
+      </header>
+      <div className="min-h-0 flex-1">
+        <ThreadChat threadId={threadId} variant="full" permissionPolicy="inherit" className="h-full min-h-0" />
+      </div>
+    </div>
+  );
+}
+
+function BotsSidebar({ subPath }: PluginNavPanelProps) {
+  const activeThreadId = botsThreadIdFromSubPath(subPath);
+  const onNavigate = () => {};
   const sidebar = experimental_useSidebarThreads();
   const navigate = useBbNavigate();
   const portalScope = usePortalScopeProps();
@@ -597,6 +672,10 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
   const [showOtherChats, setShowOtherChats] = useState(false);
   const chatsOtherId = useId();
   const [editor, setEditor] = useState<EditorTarget | null>(null);
+  useEffect(() => {
+    registerBotsCreateBotHandler(() => setEditor({ kind: "create" }));
+    return () => registerBotsCreateBotHandler(null);
+  }, []);
   const [showHidden, setShowHidden] = useState(false);
   const [addingSection, setAddingSection] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
@@ -637,7 +716,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
     run(async () => {
       await assignConversation(thread, botId, placeFirst);
       toast.success(`Conversation assigned to ${bots.find(bot => bot.id === botId)?.name ?? "bot"}`, {
-        action: { label: "View", onClick: () => { navigate.toThread(thread.id); onNavigate(); } },
+        action: { label: "View", onClick: () => { openBotsThread(navigate, thread.id); onNavigate(); } },
       });
     });
   }, (botId) => bots.some(bot => bot.id === botId), (_thread, element, _x, _y, shiftKey) => {
@@ -794,7 +873,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
 
   async function openBot(bot: BotMetadata) {
     const first = firstConversation(bot);
-    if (first) { navigate.toThread(first.id); onNavigate(); }
+    if (first) { openBotsThread(navigate, first.id); onNavigate(); }
     else await openBotConversation(bot);
   }
 
@@ -890,7 +969,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
           ? await rpc.call("conversation_fork", { botId: bot.id, sourceThreadId: conversation.sourceThreadId!, request })
           : await rpc.call("conversation_create", { botId: bot.id, request, makeMain: conversation.makeMain });
         setConversation(null); refresh();
-        navigate.toThread(threadId);
+        openBotsThread(navigate, threadId);
         onNavigate();
       }} /> : null}
       {creatingProject ? <ProjectCreateDialog hosts={hosts} {...projectActions} onClose={() => setCreatingProject(false)} onCreated={(project) => { setCreatingProject(false); navigate.toProject(project.id); onNavigate(); }} /> : null}
@@ -928,10 +1007,13 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
 }
 
 export default definePluginApp((app) => {
-  app.slots.experimental_threadList({
-    id: "bot-projects",
-    title: "Bots Fleet",
-    description: "Independent bots with their conversation trees and unassigned chats.",
-    component: BotsSidebar,
+  app.slots.navPanel({
+    id: "bots",
+    title: "Bots",
+    icon: "./assets/bot.svg",
+    path: "bots",
+    component: BotsPage,
+    experimental_sidebar: BotsSidebar,
+    experimental_useBadge: useBotsNavBadge,
   });
 });

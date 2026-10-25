@@ -3,7 +3,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, within } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import type { RenderSlotOptions } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { bot, personalProjectId, thread } from "./fixtures";
 import { newThreadRequestSchema } from "../lib/new-thread-request";
 import { request } from "./fixtures";
@@ -18,9 +19,7 @@ async function mount(options: RenderSlotOptions = {}) {
     thread("hidden", 20, { isHidden: true }),
     thread("pending", 5, { environment: { ...thread("p", 1).environment!, id: null } }),
   ];
-  const slot = renderSlot(app.threadLists[0]!, {
-    activeThreadId: "main", activeProjectId: "project", searchQuery: "", isCompactViewport: false, onNavigate() {},
-  }, {
+  const slot = renderBotsSidebar(app, "thread/main", {
     ...options,
     sidebarThreads: { threads: rows, projects: [] },
     rpc: { bots_list: () => ({ personalProjectId, bots: [bot], hosts: [], sections: [], projects: [], warnings: [],

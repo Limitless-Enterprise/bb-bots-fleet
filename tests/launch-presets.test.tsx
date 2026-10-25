@@ -4,7 +4,8 @@ import type { NewThreadComposerProps } from "@get-bb/plugin-sdk/app";
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { bot, personalProjectId, request, thread } from "./fixtures";
 import { rpcContract, type BotMetadata } from "../contract";
 import { emptyLaunchPreset, type LaunchPreset } from "../lib/launch-preset";
@@ -27,7 +28,7 @@ function props() { if (!composer.props) throw new Error("Missing composer"); ret
 
 async function mount(launchPreset?: LaunchPreset | null, owned = false) {
   let current: BotMetadata = { ...bot, ...(launchPreset === undefined ? {} : { launchPreset }) };
-  const slot = renderSlot(app.threadLists[0]!, { activeThreadId: "main", activeProjectId: "project", isCompactViewport: false, onNavigate: vi.fn(), searchQuery: "" }, {
+  const slot = renderBotsSidebar(app, "thread/main", {
     sidebarThreads: { projects: [{ id: "project", name: "Example project", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" }], threads: [thread("main", 1)] },
     rpc: {
       bots_list: () => ({ bots: [current], hosts: [{ id: "host", name: "Example machine", connected: true }], sections: [], projects: [{ id: "project", name: "Example project" }], threadBindings: [{ botId: bot.id, threadId: "main" }], warnings: [], personalProjectId, projectOwners: owned ? [{ botId: bot.id, projectId: "project" }] : [] }),
