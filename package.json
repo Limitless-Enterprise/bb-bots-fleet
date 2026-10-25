@@ -15,7 +15,7 @@
   "engines": {
     "node": ">=24",
     "bb": ">=0.46.1",
-    "bbPluginSdk": ">=0.6.79"
+    "bbPluginSdk": ">=0.6.77"
   },
   "bb": {
     "name": "Bots Fleet",

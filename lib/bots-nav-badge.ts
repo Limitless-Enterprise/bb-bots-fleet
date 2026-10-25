@@ -1,17 +1,61 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   experimental_useSidebarThreads,
+  useRealtime,
+  useRpc,
   type ExperimentalBadge,
+  type PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import { conversationStatus } from "../components/conversation-status-icon";
+import type { rpcContract } from "../contract";
+import { conversationOwners } from "./conversations";
+
+function useBotThreadBindings() {
+  const rpc = useRpc<typeof rpcContract>();
+  const [threadBindings, setThreadBindings] = useState<Array<{ threadId: string; botId: string }>>([]);
+  const [loaded, setLoaded] = useState(false);
+  const refreshSequence = useRef(0);
+  const refresh = useCallback(() => {
+    const sequence = ++refreshSequence.current;
+    return rpc.call("bots_list").then(
+      (result) => {
+        if (sequence !== refreshSequence.current) return;
+        setThreadBindings(result.threadBindings);
+        setLoaded(true);
+      },
+      () => {
+        if (sequence !== refreshSequence.current) return;
+        setLoaded(true);
+      },
+    );
+  }, [rpc]);
+  useEffect(() => {
+    void refresh();
+    return () => {
+      refreshSequence.current++;
+    };
+  }, [refresh]);
+  useRealtime("project-bots-changed", refresh);
+  return { threadBindings, loaded };
+}
+
+function isWaitingForInput(thread: PluginSidebarThread): boolean {
+  return thread.hasPendingInteraction || thread.indicator === "waiting-for-input";
+}
 
 export function useBotsNavBadge(): ExperimentalBadge | null {
   const sidebar = experimental_useSidebarThreads();
-  if (sidebar.status !== "ready") return null;
+  const { threadBindings, loaded } = useBotThreadBindings();
+  const threads = sidebar.status === "ready" ? sidebar.threads : [];
+  const owners = useMemo(() => conversationOwners(threads, threadBindings), [threads, threadBindings]);
+  const botOwned = useMemo(
+    () => threads.filter((thread) => !thread.isArchived && owners.has(thread.id)),
+    [threads, owners],
+  );
 
-  const visible = sidebar.threads.filter((thread) => !thread.isArchived);
-  const waiting = visible.filter(
-    (thread) => thread.hasPendingInteraction || thread.indicator === "waiting-for-input",
-  ).length;
+  if (sidebar.status !== "ready" || !loaded) return null;
+
+  const waiting = botOwned.filter(isWaitingForInput).length;
   if (waiting > 0) {
     const label = waiting === 1
       ? "1 conversation waiting for your input"
@@ -19,7 +63,7 @@ export function useBotsNavBadge(): ExperimentalBadge | null {
     return { count: waiting, tone: "warning", label };
   }
 
-  const unreadErrors = visible.filter(
+  const unreadErrors = botOwned.filter(
     (thread) => thread.isUnread && conversationStatus(thread).state === "error",
   ).length;
   if (unreadErrors > 0) {

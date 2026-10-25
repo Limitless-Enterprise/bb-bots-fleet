@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent } from "@testing-library/react";
+import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { botsNavPanel, renderBotsSidebar, renderSlot } from "./sidebar-host";
@@ -150,8 +150,22 @@ describe("bots page", () => {
   });
 });
 
+function botsListRpc(threadBindings: Array<{ threadId: string; botId: string }>) {
+  return {
+    bots_list: () => ({
+      personalProjectId,
+      bots: [bot],
+      hosts: [{ id: "host", name: "Local", connected: true }],
+      sections: [],
+      projects: [{ id: "project", name: "Project" }],
+      threadBindings,
+      warnings: [],
+    }),
+  };
+}
+
 describe("nav badge hook", () => {
-  it("counts conversations waiting for input", () => {
+  it("counts bot-owned conversations waiting for input", async () => {
     const badge = botsNavPanel(app).experimental_useBadge!;
     function Probe() {
       const value = badge() as import("@get-bb/plugin-sdk/app").ExperimentalBadge | null;
@@ -169,11 +183,17 @@ describe("nav badge hook", () => {
           thread("idle", 2),
         ],
       },
+      rpc: botsListRpc([
+        { threadId: "waiting", botId: bot.id },
+        { threadId: "idle", botId: bot.id },
+      ]),
     });
-    expect(slot.getByTestId("badge").textContent).toContain("1 conversation waiting");
+    await waitFor(() => {
+      expect(slot.getByTestId("badge").textContent).toContain("1 conversation waiting");
+    });
   });
 
-  it("counts waiting-for-input indicator without pending interaction", () => {
+  it("counts waiting-for-input indicator without pending interaction", async () => {
     const badge = botsNavPanel(app).experimental_useBadge!;
     function Probe() {
       const value = badge() as import("@get-bb/plugin-sdk/app").ExperimentalBadge | null;
@@ -188,12 +208,77 @@ describe("nav badge hook", () => {
         projects: [],
         threads: [thread("waiting", 1, { indicator: "waiting-for-input" })],
       },
+      rpc: botsListRpc([{ threadId: "waiting", botId: bot.id }]),
     });
-    expect(slot.getByTestId("badge").getAttribute("data-tone")).toBe("warning");
-    expect(slot.getByTestId("badge").textContent).toBe("1:1 conversation waiting for your input");
+    await waitFor(() => {
+      expect(slot.getByTestId("badge").getAttribute("data-tone")).toBe("warning");
+      expect(slot.getByTestId("badge").textContent).toBe("1:1 conversation waiting for your input");
+    });
   });
 
-  it("shows critical dot badge for unread error conversations", () => {
+  it("ignores unassigned waiting threads", async () => {
+    const badge = botsNavPanel(app).experimental_useBadge!;
+    function Probe() {
+      const value = badge() as import("@get-bb/plugin-sdk/app").ExperimentalBadge | null;
+      return <span data-testid="badge">{value ? "badge" : "none"}</span>;
+    }
+    const slot = renderSlot({ component: Probe }, {}, {
+      sidebarThreads: {
+        projects: [],
+        threads: [thread("unassigned", 1, { hasPendingInteraction: true })],
+      },
+      rpc: botsListRpc([]),
+    });
+    await waitFor(() => {
+      expect(slot.getByTestId("badge").textContent).toBe("none");
+    });
+  });
+
+  it("ignores non-bot waiting threads", async () => {
+    const badge = botsNavPanel(app).experimental_useBadge!;
+    function Probe() {
+      const value = badge() as import("@get-bb/plugin-sdk/app").ExperimentalBadge | null;
+      return <span data-testid="badge">{value ? "badge" : "none"}</span>;
+    }
+    const slot = renderSlot({ component: Probe }, {}, {
+      sidebarThreads: {
+        projects: [],
+        threads: [
+          thread("foreign", 1, { hasPendingInteraction: true }),
+          thread("main", 2),
+        ],
+      },
+      rpc: botsListRpc([{ threadId: "main", botId: bot.id }]),
+    });
+    await waitFor(() => {
+      expect(slot.getByTestId("badge").textContent).toBe("none");
+    });
+  });
+
+  it("counts bot-owned waiting threads", async () => {
+    const badge = botsNavPanel(app).experimental_useBadge!;
+    function Probe() {
+      const value = badge() as import("@get-bb/plugin-sdk/app").ExperimentalBadge | null;
+      return (
+        <span data-testid="badge" data-tone={value?.tone ?? ""}>
+          {value ? `${value.count ?? "dot"}:${value.label}` : "none"}
+        </span>
+      );
+    }
+    const slot = renderSlot({ component: Probe }, {}, {
+      sidebarThreads: {
+        projects: [],
+        threads: [thread("child", 1, { hasPendingInteraction: true, parentThreadId: "main" })],
+      },
+      rpc: botsListRpc([{ threadId: "main", botId: bot.id }]),
+    });
+    await waitFor(() => {
+      expect(slot.getByTestId("badge").getAttribute("data-tone")).toBe("warning");
+      expect(slot.getByTestId("badge").textContent).toBe("1:1 conversation waiting for your input");
+    });
+  });
+
+  it("shows critical dot badge for unread error conversations", async () => {
     const badge = botsNavPanel(app).experimental_useBadge!;
     function Probe() {
       const value = badge() as import("@get-bb/plugin-sdk/app").ExperimentalBadge | null;
@@ -208,8 +293,11 @@ describe("nav badge hook", () => {
         projects: [],
         threads: [thread("err", 1, { isUnread: true, indicator: "unread-error" })],
       },
+      rpc: botsListRpc([{ threadId: "err", botId: bot.id }]),
     });
-    expect(slot.getByTestId("badge").getAttribute("data-tone")).toBe("critical");
-    expect(slot.getByTestId("badge").textContent).toBe("dot:1 unread conversation with an error");
+    await waitFor(() => {
+      expect(slot.getByTestId("badge").getAttribute("data-tone")).toBe("critical");
+      expect(slot.getByTestId("badge").textContent).toBe("dot:1 unread conversation with an error");
+    });
   });
 });
