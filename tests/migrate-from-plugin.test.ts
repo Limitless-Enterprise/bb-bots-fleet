@@ -271,10 +271,10 @@ it("names the staged state path when post-commit state copy fails", async () => 
   const realCpSync = cpSyncControl.real();
   cpSyncControl.mock
     .mockImplementationOnce((src, dest, options) => realCpSync(src, dest, options))
+    .mockImplementationOnce((src, dest, options) => realCpSync(src, dest, options))
     .mockImplementationOnce(() => {
       throw new Error("disk full");
-    })
-    .mockImplementationOnce((src, dest, options) => realCpSync(src, dest, options));
+    });
   await expect(migrateFromPlugin(host.bb, createBotStore(host.bb), "bots-sidebar")).rejects.toThrow(
     /Failed to copy bot state from staged path .*state-migration-pending-\d+: disk full/,
   );
