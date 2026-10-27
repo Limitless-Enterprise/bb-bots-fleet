@@ -92,10 +92,12 @@ export async function migrateFromPlugin(bb: BbPluginApi, store: BotStore, source
       }
       try {
         cpSync(pendingPath, stateDest, { recursive: true, force: true });
-        rmSync(pendingPath, { recursive: true, force: true });
       } catch (stateError) {
         throw new Error(stateCopyFailureMessage(pendingPath, stateError));
       }
+      try {
+        rmSync(pendingPath, { recursive: true, force: true });
+      } catch {}
     }
     const copiedStateBots = existsSync(stateStaging) ? summary.botCount : 0;
     return { sourcePluginId, botCount: summary.botCount, bindingCount: summary.bindingCount, copiedStateBots };
