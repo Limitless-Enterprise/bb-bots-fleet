@@ -80,10 +80,11 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
       report.push({ action: "bot", target: address, status: dryRun ? "skipped" : "created" });
       return;
     }
-    const patch: Partial<{ role: string; soul: string; launchPreset: BotMetadata["launchPreset"] }> = {};
+    const patch: Partial<{ role: string; soul: string; launchPreset: BotMetadata["launchPreset"]; parentBotId: string | null }> = {};
     if (existing.role !== spec.role) patch.role = spec.role;
     if (sha256(soul) !== sha256(existing.soul)) patch.soul = soul;
     if (spec.launch && JSON.stringify(existing.launchPreset) !== JSON.stringify(spec.launch)) patch.launchPreset = spec.launch;
+    if ((existing.parentBotId ?? null) !== parentId) patch.parentBotId = parentId;
     if (Object.keys(patch).length && !dryRun) await ops.updateBot(existing.id, patch);
     report.push({ action: "bot", target: address, status: Object.keys(patch).length ? dryRun ? "skipped" : "updated" : "unchanged" });
     if (spec.projectRole === "owner" && !store.projectOwner(project.id) && !dryRun) await ops.updateProjectRole(existing.id, "own", project.id);
@@ -92,11 +93,22 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   for (const schema of manifest.schemas) {
     const metadata: BotNodeMetadata = { ...(schema.dataServicePath ? { dataServicePath: schema.dataServicePath } : {}), ...(schema.database ? { database: schema.database } : {}), ...(schema.foldedInto ? { foldedInto: schema.foldedInto } : {}) };
     let schemaNode = store.nodes.list().find((node) => node.parentNodeId === appNode!.id && node.name === schema.key);
+    validateSchemaNodeMetadata(store.nodes.list(), appNode!, metadata);
+    if (metadata.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, metadata.foldedInto);
     if (!schemaNode) {
-      validateSchemaNodeMetadata(store.nodes.list(), appNode!, metadata);
-      if (metadata.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, metadata.foldedInto);
       schemaNode = { id: newNodeId(), kind: "schema", name: schema.key, parentNodeId: appNode!.id, projectId: null, sectionId: null, metadata, createdAt: Date.now() };
       if (!dryRun) store.nodes.save(schemaNode);
+    } else {
+      const nextMetadata: BotNodeMetadata = {
+        ...(schemaNode.metadata.registryRef ? { registryRef: schemaNode.metadata.registryRef } : {}),
+        ...(schema.dataServicePath ? { dataServicePath: schema.dataServicePath } : {}),
+        ...(schema.database ? { database: schema.database } : {}),
+        ...(schema.foldedInto ? { foldedInto: schema.foldedInto } : {}),
+      };
+      if (JSON.stringify(schemaNode.metadata) !== JSON.stringify(nextMetadata)) {
+        schemaNode = { ...schemaNode, metadata: nextMetadata };
+        if (!dryRun) store.nodes.save(schemaNode);
+      }
     }
     if (schema.data && schemaNode) await upsert(schema.data, schemaNode.id);
   }
