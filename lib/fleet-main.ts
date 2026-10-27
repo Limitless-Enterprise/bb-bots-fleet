@@ -8,6 +8,7 @@ import { projectLaunchEnvironment, worktreeLaunchEnvironment } from "./worktree-
 import { resolveBotSelector, resolveProject } from "./fleet-resolve";
 import { parseLaunchPresetFromFlags } from "./fleet-launch-flags";
 import { assertFleetRegistryOperator } from "./fleet-authz";
+import { assertFleetProjectAllowed } from "./fleet-project-guard";
 
 type FlagMap = Record<string, string | boolean>;
 
@@ -24,8 +25,21 @@ export async function runMainCommand(argv: string[], ctx: PluginCliContext, bb: 
   if (positional.length !== 1) throw new Error("Usage: bb bots main <bot> [--project <p> | --personal] [--worktree] [--prompt <text> | --prompt-file <p>] [--replace] [--json]");
   const bot = resolveBotSelector(store, positional[0]!);
   const personalId = await personalProjectId();
-  const projectId = flags.personal ? personalId : flags.project ? (await resolveProject(bb, String(flags.project))).id : store.ownedProjects(bot.id)[0];
-  if (!projectId) throw new Error("Choose --project or --personal; this bot owns no project");
+  let project: { id: string; name: string };
+  if (flags.personal) {
+    project = await resolveProject(bb, "personal");
+  } else if (flags.project) {
+    project = await resolveProject(bb, String(flags.project));
+  } else {
+    const ownedId = store.ownedProjects(bot.id)[0];
+    if (!ownedId) throw new Error("Choose --project or --personal; this bot owns no project");
+    const listed = await bb.sdk.projects.list({ includePersonal: true });
+    const found = listed.find((entry) => entry.id === ownedId);
+    if (!found) throw new Error(`Project not found: ${ownedId}`);
+    project = found;
+  }
+  assertFleetProjectAllowed(project, "bind");
+  const projectId = project.id;
   if (bot.mainThreadId && !flags.replace) {
     try {
       const existing = await bb.sdk.threads.get({ threadId: bot.mainThreadId });
