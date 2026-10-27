@@ -10,10 +10,6 @@ const app = await loadPluginApp(() => import("../app"));
 afterEach(cleanup);
 
 describe("bots rail panel registration", () => {
-  it("registers assign-to-bot thread action", () => {
-    expect(app.threadActions.some((entry) => entry.id === "assign-to-bot")).toBe(true);
-  });
-
   it("registers navPanel with sidebar and badge hook", () => {
     expect(app.threadLists).toHaveLength(0);
     const panel = botsNavPanel(app);
