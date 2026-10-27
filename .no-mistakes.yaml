@@ -1,0 +1,15 @@
+commands:
+  test: pnpm install --frozen-lockfile && pnpm test
+  lint: pnpm install --frozen-lockfile && pnpm typecheck
+
+test:
+  evidence:
+    attach_media: false
+    store_in_repo: false
+  instructions: |
+    Validate only with the commands above and the vitest harness (tests/backend-fixture.ts).
+    NEVER run `bb plugin install|remove|update|reload|enable|disable`, `bb bots` mutating commands
+    (create, update, node, link, unlink, release, deploy --apply, main, migrate-from, memory edit),
+    or create BB threads or projects. The BB on this machine is the operator's live instance;
+    no live validation is allowed. Mark any UI or live-only scenario as skip with reason
+    "operator live instance; harness only". Verdict go when both commands pass.
