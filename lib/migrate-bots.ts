@@ -22,7 +22,7 @@ export const SIDEBAR_MIGRATION_PENDING_WARNING =
 export const SIDEBAR_MIGRATION_PENDING_CREATE_ERROR =
   "Complete sidebar migration first: run `bb bots migrate-from bots-sidebar` before creating bots here.";
 
-function sidebarSourceHasBotData(sourceDir: string) {
+export function sidebarSourceHasBotData(sourceDir: string): boolean {
   const dbPath = join(sourceDir, "data.db");
   if (!existsSync(dbPath)) return false;
   const db = new Database(dbPath, { readonly: true });
@@ -30,8 +30,9 @@ function sidebarSourceHasBotData(sourceDir: string) {
     const bots = (db.prepare("SELECT COUNT(*) AS count FROM bots").get() as { count: number }).count;
     const bindings = (db.prepare("SELECT COUNT(*) AS count FROM bot_threads").get() as { count: number }).count;
     return bots > 0 || bindings > 0;
-  } catch {
-    return false;
+  } catch (error) {
+    console.warn(`Could not read sidebar bot database at ${dbPath}:`, error);
+    return true;
   } finally {
     db.close();
   }

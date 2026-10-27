@@ -26,6 +26,11 @@ function copyTable(legacy: Database.Database, target: Database.Database, table: 
   for (const row of rows) insert.run(...columns.map((column) => row[column]));
 }
 
+export function stateCopyFailureMessage(stateStaging: string, cause: unknown) {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return `Failed to copy bot state from staged path ${stateStaging}: ${detail}`;
+}
+
 function snapshotSourceDatabase(sourceDbPath: string, scratchDb: string) {
   copyFileSync(sourceDbPath, scratchDb);
   for (const suffix of ["-wal", "-shm"] as const) {
@@ -54,6 +59,7 @@ export async function migrateFromPlugin(bb: BbPluginApi, store: BotStore, source
   const scratchDir = mkdtempSync(join(tmpdir(), "bots-fleet-migrate-"));
   const scratchDb = join(scratchDir, "source.db");
   let legacy: Database.Database | null = null;
+  let preserveScratch = false;
   try {
     snapshotSourceDatabase(sourceDbPath, scratchDb);
     legacy = new Database(scratchDb, { readonly: true });
@@ -75,13 +81,28 @@ export async function migrateFromPlugin(bb: BbPluginApi, store: BotStore, source
       return { botCount, bindingCount };
     }).immediate();
     if (existsSync(stateStaging)) {
-      mkdirSync(join(targetDir, "state"), { recursive: true, mode: 0o700 });
-      cpSync(stateStaging, join(targetDir, "state"), { recursive: true, force: true });
+      const stateDest = join(targetDir, "state");
+      mkdirSync(stateDest, { recursive: true, mode: 0o700 });
+      const pendingPath = join(targetDir, `state-migration-pending-${Date.now()}`);
+      try {
+        cpSync(stateStaging, pendingPath, { recursive: true });
+      } catch (pendingError) {
+        preserveScratch = true;
+        throw new Error(stateCopyFailureMessage(stateStaging, pendingError));
+      }
+      try {
+        cpSync(pendingPath, stateDest, { recursive: true, force: true });
+      } catch (stateError) {
+        throw new Error(stateCopyFailureMessage(pendingPath, stateError));
+      }
+      try {
+        rmSync(pendingPath, { recursive: true, force: true });
+      } catch {}
     }
     const copiedStateBots = existsSync(stateStaging) ? summary.botCount : 0;
     return { sourcePluginId, botCount: summary.botCount, bindingCount: summary.bindingCount, copiedStateBots };
   } finally {
     legacy?.close();
-    rmSync(scratchDir, { recursive: true, force: true });
+    if (!preserveScratch) rmSync(scratchDir, { recursive: true, force: true });
   }
 }

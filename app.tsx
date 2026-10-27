@@ -198,6 +198,7 @@ function BotEditor({ target, hosts, sections, projects, bots, projectOwners, onC
   const [pending, setPending] = useState(false);
   const saving = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [tab, setTab] = useState<EditorTab>(editing ? target.tab ?? "setup" : "setup");
   const tabsId = useId();
   const tabs = [{ id: "setup", label: "Bot" }, { id: "context", label: "Context" }, ...(editing ? [{ id: "memory" as const, label: "Memory" }] : []), { id: "projects", label: `Projects${linkedProjectIds.length ? ` · ${linkedProjectIds.length}` : ""}` }] as const;
@@ -220,7 +221,8 @@ function BotEditor({ target, hosts, sections, projects, bots, projectOwners, onC
   function closeEditor() {
     if (saving.current || pending || projectPending) return;
     const stateDirty = editing && (memory !== target.metadata.memory || settingsText !== `${JSON.stringify(target.metadata.settings, null, 2)}\n` || JSON.stringify(launchPreset) !== JSON.stringify(target.metadata.launchPreset ?? emptyLaunchPreset()));
-    if (!stateDirty || window.confirm("Discard unsaved bot state changes?")) onClose();
+    if (stateDirty) { setDiscardConfirmOpen(true); return; }
+    onClose();
   }
   async function submit() {
     if (saving.current || pending || projectPending || projectDraft || sectionDraft !== null) return;
@@ -241,7 +243,8 @@ function BotEditor({ target, hosts, sections, projects, bots, projectOwners, onC
       onClose();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { saving.current = false; setPending(false); }
   }
-  return <Dialog open onOpenChange={(open) => { if (!open) closeEditor(); }}>
+  return <>
+  <Dialog open onOpenChange={(open) => { if (!open) closeEditor(); }}>
     <DialogContent className="bot-editor-dialog flex max-h-[85dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => event.preventDefault()} onKeyDown={(event) => { if (event.key === "Enter" && event.target instanceof HTMLInputElement) { event.preventDefault(); event.stopPropagation(); } }}>
         <DialogHeader className="shrink-0 px-4 pt-4 pr-10 pb-3">
@@ -311,7 +314,20 @@ function BotEditor({ target, hosts, sections, projects, bots, projectOwners, onC
         <DialogFooter className="shrink-0 border-t border-border px-4 py-3"><Button type="button" variant="ghost" disabled={pending || projectPending} onClick={closeEditor}>Cancel</Button><Button type="button" onClick={() => void submit()} disabled={pending || projectPending || projectDraft || sectionDraft !== null || !name.trim() || (!editing && !hostId)}>{pending ? "Saving..." : editing ? "Save bot" : "Create bot"}</Button></DialogFooter>
       </form>
     </DialogContent>
-  </Dialog>;
+  </Dialog>
+  {discardConfirmOpen ? <Dialog open onOpenChange={(open) => { if (!open) setDiscardConfirmOpen(false); }}>
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Discard unsaved changes?</DialogTitle>
+        <DialogDescription>Unsaved bot state changes will be lost.</DialogDescription>
+      </DialogHeader>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={() => setDiscardConfirmOpen(false)}>Keep editing</Button>
+        <Button type="button" variant="destructive" onClick={() => { setDiscardConfirmOpen(false); onClose(); }}>Discard</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog> : null}
+  </>;
 }
 
 type MenuItem = { label: string; action: () => void; disabled?: boolean };
@@ -686,6 +702,7 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
   const [sectionName, setSectionName] = useState("");
   const [sectionPending, setSectionPending] = useState(false);
   const [editingSection, setEditingSection] = useState<BotSection | null>(null);
+  const [pendingSectionDelete, setPendingSectionDelete] = useState<BotSection | null>(null);
   const [shownTopicBots, setShownTopicBots] = useState<Set<string>>(() => new Set());
   const sidebarElement = useRef<HTMLDivElement>(null);
   const [droppedConversation, setDroppedConversation] = useState<{ botId: string; threadId: string } | null>(null);
@@ -904,7 +921,7 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
               { label: "New section…", action: () => setAddingSection(true) },
               ...(section.id ? [
                 { label: "Rename section…", action: () => setEditingSection(sections.find((entry) => entry.id === section.id) ?? null) },
-                { label: "Delete section", action: () => { if (window.confirm(`Delete “${section.name}”? Its bots will move to Main.`)) void rpc.call("section_delete", { sectionId: section.id! }).then(refresh); } },
+                { label: "Delete section", action: () => setPendingSectionDelete(sections.find((entry) => entry.id === section.id) ?? null) },
               ] : []),
             ]}><div className="px-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground" tabIndex={0}>{section.name}</div></RowContextMenu> : null}
             {section.id === null && section.bots.length === 0 && draggedBotId ? <div className="rounded border border-dashed border-border px-2 py-2 text-[10px] text-muted-foreground">Move to Main</div> : null}
@@ -953,6 +970,22 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
           {chatsTree.other.length ? <li><button type="button" className="flex min-h-7 w-full items-center gap-1 rounded-md px-1 text-left text-[10px] text-muted-foreground hover:bg-state-hover" aria-expanded={showOtherChats} aria-controls={chatsOtherId} onClick={() => setShowOtherChats((current) => !current)}><span className={showOtherChats ? "rotate-90" : ""}><TinyIcon name="chevron" /></span>{chatsTree.other.length} Other</button><ul id={chatsOtherId} hidden={!showOtherChats}>{showOtherChats ? chatsTree.other.map(renderChat) : null}</ul></li> : null}
         </ul>
       </ResizableChats>
+      {pendingSectionDelete ? <Dialog open onOpenChange={(open) => { if (!open) setPendingSectionDelete(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete “{pendingSectionDelete.name}”?</DialogTitle>
+            <DialogDescription>Its bots will move to Main.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setPendingSectionDelete(null)}>Cancel</Button>
+            <Button type="button" variant="destructive" onClick={() => {
+              const sectionId = pendingSectionDelete.id;
+              setPendingSectionDelete(null);
+              void rpc.call("section_delete", { sectionId }).then(refresh);
+            }}>Delete section</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog> : null}
       {editingSection ? <RenameConversationDialog title={editingSection.name} heading="Rename section" description="Choose the section name shown in the sidebar." onClose={() => setEditingSection(null)} onSave={async (name) => {
         await rpc.call("section_update", { sectionId: editingSection.id, name }); refresh();
       }} /> : null}

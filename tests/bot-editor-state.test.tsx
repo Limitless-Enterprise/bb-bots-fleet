@@ -87,8 +87,13 @@ it("keeps state drafts and their original revisions on conflicts and realtime re
   expect(file(dialog, "MEMORY.md").value).toBe("Keep my memory draft");
   expect(file(dialog, "settings.json").value).toBe('{"keep":"settings draft"}');
   expect(slot.inspection.rpcCalls.filter(call => call.method === "bot_update")).toHaveLength(1);
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false); fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-  expect(confirm).toHaveBeenCalledWith("Discard unsaved bot state changes?"); expect(slot.getByRole("dialog")).toBe(dialog);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  const discardDialog = await slot.findByRole("dialog", { name: "Discard unsaved changes?" });
+  fireEvent.click(within(discardDialog).getByRole("button", { name: "Keep editing" }));
+  expect(slot.getByRole("dialog", { name: "Edit bot" })).toBe(dialog);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  fireEvent.click(within(await slot.findByRole("dialog", { name: "Discard unsaved changes?" })).getByRole("button", { name: "Discard" }));
+  await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
 });
 
 it.each(["{", "[]", "null", "4", '{"limit":1e400}'])("retains invalid settings %s without partially saving other fields", async (invalid) => {

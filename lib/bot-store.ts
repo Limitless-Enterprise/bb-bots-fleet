@@ -1,6 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { metadataSchema, sectionSchema, type BotMetadata, type BotSection } from "../contract";
+import { launchPresetStorageWarnings, parseStoredLaunchPreset } from "./launch-preset";
 import { createBotNodeStore, validateBotSave, type BotNode } from "./bot-nodes";
 
 export function createBotStore(bb: BbPluginApi) {
@@ -52,7 +53,9 @@ export function createBotStore(bb: BbPluginApi) {
   const legacySchema = metadataSchema.omit({ stateReady: true, legacyHomeProjectId: true }).extend({ homePath: z.string(), homeProjectId: z.string().nullable() }).strict();
   const raw = (id: string) => db.prepare("SELECT data FROM bots WHERE id = ?").get(id) as { data: string } | undefined;
   function decode(data: string): BotMetadata {
-    const parsed: unknown = JSON.parse(data);
+    const raw = JSON.parse(data) as Record<string, unknown>;
+    if ("launchPreset" in raw) raw.launchPreset = parseStoredLaunchPreset(raw.launchPreset);
+    const parsed: unknown = raw;
     const current = metadataSchema.safeParse(parsed);
     if (current.success) return current.data;
     const { homePath: _path, homeProjectId, ...legacy } = legacySchema.parse(parsed);
@@ -193,6 +196,13 @@ export function createBotStore(bb: BbPluginApi) {
     pendingStart(token: string): string | null { return (db.prepare("SELECT bot_id FROM bot_starts WHERE token = ?").get(token) as { bot_id: string } | undefined)?.bot_id ?? null; },
     finishStart(token: string, threadId: string) { db.transaction(() => { const botId = this.pendingStart(token); if (!botId) throw new Error("Unknown bot conversation start"); bind(threadId, botId); db.prepare("DELETE FROM bot_starts WHERE token = ?").run(token); })(); },
     cancelStart(token: string) { db.prepare("DELETE FROM bot_starts WHERE token = ?").run(token); },
+    launchPresetStorageWarnings() {
+      const warnings = new Set<string>();
+      for (const row of db.prepare("SELECT data FROM bots").all() as { data: string }[]) {
+        for (const warning of launchPresetStorageWarnings(row.data)) warnings.add(warning);
+      }
+      return [...warnings];
+    },
   };
 }
 export interface ProjectOwnership { projectId: string; botId: string; assignedAt: number }

@@ -31,9 +31,13 @@ backing BB project or writes `SOUL.md` into a repository.
 
 In **Edit bot → Bot → New conversations**, choose an optional preferred
 harness, model, reasoning level, and service tier using BB's native picker.
-Permissions follow the project unless you enable **Custom permissions**. The
-pickers use the selected machine's live capabilities; BB reconciles unsupported
-selections when opening the composer.
+Permissions follow the project unless you enable **Custom permissions**, which
+shows a note that **full** isn't allowed for bots. Saved presets allow
+**accept-edits** or **auto** only; **full** is rejected on bot create/update,
+RPC validation, and `bb bots` `--permission`. Rows that still store **full** load
+with custom permissions cleared and surface a refresh warning until you save
+again. The pickers use the selected machine's live capabilities;
+BB reconciles unsupported selections when opening the composer.
 
 Choose **Fresh worktree** to make the bot's + start a new worktree when it owns
 a project. Without an owned project, + still opens a personal conversation.
@@ -282,7 +286,8 @@ Within the Bots nav rail, the sidebar tree behaves as follows:
   reuses the existing worktree. The picker remains editable; if that machine lacks
   a project source, BB may fall back to an available source.
 - Save is explicit; Enter never submits text fields. Drafts survive tab changes.
-  No sidebar overlay toolbars or activity dates; the hidden toggle stays at bottom.
+  Delete section and discard unsaved bot state/context edits use plugin confirmation
+  dialogs. No sidebar overlay toolbars or activity dates; the hidden toggle stays at bottom.
 - Chats contains unassigned conversations and is collapsible/resizable. Several
   bots may share a project without sharing identity or conversation ownership.
 
@@ -307,7 +312,13 @@ disabled and has no pending conversation-start tokens. It records the migration 
 `bot_state` and is one-time only. Until that command succeeds, Bots Fleet shows a
 warning on refresh, `bb bots list` prints the same hint on stderr, new bot creation
 is blocked, and version-1 project import stays deferred even if you open the sidebar
-before step 3. Bot IDs, main pointers, thread bindings, and
+before step 3. An unreadable sidebar `data.db` is logged and treated like pending
+migration data (not an empty install). After the database commit, staged bot
+exports copy through `state-migration-pending-*` under the fleet plugin data
+directory into `state/`; if that final copy fails, exports remain in the pending
+directory and the error names that path for recovery. If staging cannot be copied
+into plugin data at all, the error names the temporary staging directory instead.
+Bot IDs, main pointers, thread bindings, and
 historical `originPluginId` values (including `bots-sidebar` and the earlier private
 `bots` namespace) stay unchanged; routing still resolves through saved bindings.
 Keep a backup of both plugin directories before switching. Client layout and

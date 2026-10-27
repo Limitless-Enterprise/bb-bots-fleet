@@ -36,9 +36,22 @@ describe("private bot identities", () => {
     expect(host.harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
   });
 
+  it("rejects launch presets that request full permission", async () => {
+    const host = await setup();
+    const bot = await host.create();
+    await expect(host.harness.behavior.callRpc("bot_update", {
+      ...editable(bot),
+      launchPreset: { execution: { providerId: "saved-harness", model: "saved-model", reasoningLevel: "deep", permissionMode: "full" }, workspace: "worktree", initialPrompt: "" },
+    })).rejects.toThrow();
+    await expect(host.harness.behavior.callRpc("bot_create", {
+      name: "Blocked", role: "R", hostId: "host-home", avatar, sectionId: null, linkedProjectIds: [], soul: "",
+      launchPreset: { execution: { providerId: "h", model: "m", reasoningLevel: "low", permissionMode: "full" }, workspace: "checkout", initialPrompt: "" },
+    })).rejects.toThrow();
+  });
+
   it("never overwrites a submitted execution choice with the bot's saved preset", async () => {
     const host = await setup(); let bot = await host.create();
-    bot = await host.harness.behavior.callRpc("bot_update", { ...editable(bot), launchPreset: { execution: { providerId: "saved-harness", model: "saved-model", reasoningLevel: "deep", permissionMode: "full" }, workspace: "worktree", initialPrompt: "Saved prompt" } }) as BotMetadata;
+    bot = await host.harness.behavior.callRpc("bot_update", { ...editable(bot), launchPreset: { execution: { providerId: "saved-harness", model: "saved-model", reasoningLevel: "deep", permissionMode: "auto" }, workspace: "worktree", initialPrompt: "Saved prompt" } }) as BotMetadata;
     const chosen = { ...request(PERSONAL_ID), providerId: "chosen-harness", model: "chosen-model", reasoningLevel: "adaptive", serviceTier: "priority", permissionMode: "accept-edits", sessionOptions: { thinking: true } };
     await host.harness.behavior.callRpc("conversation_create", { botId: bot.id, request: chosen });
     expect(host.harness.inspection.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({ ...chosen, input: expect.arrayContaining(chosen.input) });
