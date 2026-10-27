@@ -280,10 +280,10 @@ Within the Bots nav rail, the sidebar tree behaves as follows:
   reuses the existing worktree. The picker remains editable; if that machine lacks
   a project source, BB may fall back to an available source.
 - Save is explicit; Enter never submits text fields. Drafts survive tab changes.
-  Discard unsaved bot state/context edits uses a plugin confirmation dialog. No sidebar
-  overlay toolbars, activity dates, or Chats pane; the hidden-bot toggle stays at the
-  bottom. Several bots may share a project without sharing identity or conversation
-  ownership.
+  Delete section and discard unsaved bot state/context edits use plugin confirmation
+  dialogs. No sidebar overlay toolbars, activity dates, or Chats pane; the hidden-bot
+  toggle stays at the bottom. Several bots may share a project without sharing identity
+  or conversation ownership.
 
 ## Plugin identity
 

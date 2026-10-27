@@ -616,6 +616,7 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
   const [sectionName, setSectionName] = useState("");
   const [sectionPending, setSectionPending] = useState(false);
   const [editingSection, setEditingSection] = useState<BotSection | null>(null);
+  const [pendingSectionDelete, setPendingSectionDelete] = useState<BotSection | null>(null);
   const [shownTopicBots, setShownTopicBots] = useState<Set<string>>(() => new Set());
   const sidebarElement = useRef<HTMLDivElement>(null);
   const [draggedBotId, setDraggedBotId] = useState<string | null>(null);
@@ -785,7 +786,7 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
               { label: "New section…", action: () => setAddingSection(true) },
               ...(section.id ? [
                 { label: "Rename section…", action: () => setEditingSection(sections.find((entry) => entry.id === section.id) ?? null) },
-                { label: "Delete section", action: () => { if (window.confirm(`Delete “${section.name}”? Its bots will move to Main.`)) void rpc.call("section_delete", { sectionId: section.id! }).then(refresh); } },
+                { label: "Delete section", action: () => setPendingSectionDelete(sections.find((entry) => entry.id === section.id) ?? null) },
               ] : []),
             ]}><div className="px-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground" tabIndex={0}>{section.name}</div></RowContextMenu> : null}
             {section.id === null && section.bots.length === 0 && draggedBotId ? <div className="rounded border border-dashed border-border px-2 py-2 text-[10px] text-muted-foreground">Move to Main</div> : null}
@@ -825,6 +826,22 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
           <button type="button" className="h-5 rounded px-1.5 text-[9px] text-muted-foreground hover:bg-state-hover" aria-pressed={showHidden} onClick={() => setShowHidden((current) => !current)}>{hiddenBots.length} hidden</button>
         </div> : null}
       </div>
+      {pendingSectionDelete ? <Dialog open onOpenChange={(open) => { if (!open) setPendingSectionDelete(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete “{pendingSectionDelete.name}”?</DialogTitle>
+            <DialogDescription>Its bots will move to Main.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setPendingSectionDelete(null)}>Cancel</Button>
+            <Button type="button" variant="destructive" onClick={() => {
+              const sectionId = pendingSectionDelete.id;
+              setPendingSectionDelete(null);
+              void rpc.call("section_delete", { sectionId }).then(refresh);
+            }}>Delete section</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog> : null}
       {editingSection ? <RenameConversationDialog title={editingSection.name} heading="Rename section" description="Choose the section name shown in the sidebar." onClose={() => setEditingSection(null)} onSave={async (name) => {
         await rpc.call("section_update", { sectionId: editingSection.id, name }); refresh();
       }} /> : null}
