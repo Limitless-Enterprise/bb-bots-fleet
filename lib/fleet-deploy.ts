@@ -137,12 +137,26 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   };
   for (const spec of topologicalBotOrder(manifest.bots)) await upsert(spec, appNode!.id);
 
+  let exitCode = 0;
+  let abortDeploy = false;
   if (!dryRun) {
     for (const schema of manifest.schemas) {
-      if (schema.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, schema.foldedInto);
+      if (!schema.foldedInto) continue;
+      try {
+        validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, schema.foldedInto);
+      } catch (error) {
+        exitCode = 1;
+        abortDeploy = true;
+        report.push({
+          action: "folded-into",
+          target: `${manifest.appName}/${schema.key}`,
+          status: error instanceof Error ? `failed: ${error.message}` : "failed",
+        });
+      }
     }
   }
 
+  if (!abortDeploy) {
   const schemaUpserts: Array<{ spec: NormalizedBotSpec; nodeId: string }> = [];
   for (const schema of manifest.schemas) {
     const metadata: BotNodeMetadata = { ...(schema.dataServicePath ? { dataServicePath: schema.dataServicePath } : {}), ...(schema.database ? { database: schema.database } : {}), ...(schema.foldedInto ? { foldedInto: schema.foldedInto } : {}) };
@@ -177,7 +191,6 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     const bot = resolveBotSelector(store, specialist);
     if (!bot.linkedProjectIds.includes(project.id) && !dryRun) await ops.updateProjectRole(bot.id, "join", project.id);
   }
-  let exitCode = 0;
   if (!dryRun) {
     for (const spec of mainSpecs) {
       const bot = resolveMainBot(spec);
@@ -196,6 +209,7 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
         report.push({ action: "main", target: address, status: "unchanged" });
       }
     }
+  }
   }
   const previewTree = dryRun ? dryRunManifestTree(manifest, project.id, store) : null;
   const treeStdout = previewTree
