@@ -119,10 +119,13 @@ export function loadManifestFile(manifestPath: string) {
     if (schema.data) readSoul(baseDir, schema.data.soulPath);
     if (schema.foldedInto && !raw.bots[schema.foldedInto]) throw new Error(`foldedInto must name a bot key: ${schema.foldedInto}`);
   }
+  const charter = raw.charter
+    ? { toKey: raw.charter.to, messagePath: resolve(baseDir, raw.charter.messageFile), message: readFileSync(resolve(baseDir, raw.charter.messageFile), "utf8") }
+    : null;
   return {
     version: raw.version ?? 1, appName, projectSelector, defaultMachine, defaultLaunch, bots, schemas,
     specialists: raw.specialists,
-    charter: raw.charter ? { toKey: raw.charter.to, messagePath: resolve(baseDir, raw.charter.messageFile) } : null,
+    charter,
     baseDir,
   };
 }

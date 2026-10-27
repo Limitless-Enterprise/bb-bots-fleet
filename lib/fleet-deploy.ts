@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
 import type { BotMetadata } from "../contract";
 import { avatarSchema } from "../contract";
@@ -28,6 +27,7 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   if (!manifest.defaultMachine) throw new Error("Manifest must set defaults.machine or app.machine");
   const machine = await resolveMachine(bb, manifest.defaultMachine);
   const report: Array<{ action: string; target: string; status: string }> = [];
+  const createdBotKeys = new Set<string>();
   for (const specialist of manifest.specialists) resolveBotSelector(store, specialist);
 
   let sectionId = store.sections().find((section) => section.name === manifest.appName)?.id ?? null;
@@ -51,7 +51,10 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     const existing = store.list().find((bot) => bot.nodeId === nodeId && bot.name === spec.key);
     const address = existing ? botAddress(store.nodes.list(), existing) : `${manifest.appName}/${spec.key}`;
     if (!existing) {
-      if (!dryRun) await ops.createBot({ name: spec.key, role: spec.role, hostId: machine.id, avatar: avatar(), sectionId, linkedProjectIds: [project.id], ownedProjectIds: spec.projectRole === "owner" ? [project.id] : undefined, soul, nodeId, parentBotId: parentId, ...(spec.launch ? { launchPreset: spec.launch } : {}) });
+      if (!dryRun) {
+        await ops.createBot({ name: spec.key, role: spec.role, hostId: machine.id, avatar: avatar(), sectionId, linkedProjectIds: [project.id], ownedProjectIds: spec.projectRole === "owner" ? [project.id] : undefined, soul, nodeId, parentBotId: parentId, ...(spec.launch ? { launchPreset: spec.launch } : {}) });
+        createdBotKeys.add(spec.key);
+      }
       report.push({ action: "bot", target: address, status: dryRun ? "skipped" : "created" });
       return;
     }
@@ -68,14 +71,10 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     const metadata: BotNodeMetadata = { ...(schema.dataServicePath ? { dataServicePath: schema.dataServicePath } : {}), ...(schema.database ? { database: schema.database } : {}), ...(schema.foldedInto ? { foldedInto: schema.foldedInto } : {}) };
     let schemaNode = store.nodes.list().find((node) => node.parentNodeId === appNode!.id && node.name === schema.key);
     if (!schemaNode) {
-      if (dryRun) {
-        schemaNode = { id: newNodeId(), kind: "schema", name: schema.key, parentNodeId: appNode!.id, projectId: null, sectionId: null, metadata, createdAt: Date.now() };
-      } else {
-        validateSchemaNodeMetadata(store.nodes.list(), appNode!, metadata);
-        if (metadata.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, metadata.foldedInto);
-        schemaNode = { id: newNodeId(), kind: "schema", name: schema.key, parentNodeId: appNode!.id, projectId: null, sectionId: null, metadata, createdAt: Date.now() };
-        store.nodes.save(schemaNode);
-      }
+      validateSchemaNodeMetadata(store.nodes.list(), appNode!, metadata);
+      if (metadata.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, metadata.foldedInto);
+      schemaNode = { id: newNodeId(), kind: "schema", name: schema.key, parentNodeId: appNode!.id, projectId: null, sectionId: null, metadata, createdAt: Date.now() };
+      if (!dryRun) store.nodes.save(schemaNode);
     }
     if (schema.data && schemaNode) await upsert(schema.data, schemaNode.id);
   }
@@ -85,6 +84,7 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     if (!bot.linkedProjectIds.includes(project.id) && !dryRun) await ops.updateProjectRole(bot.id, "join", project.id);
   }
   if (!dryRun) {
+    let openedCharterMain = false;
     for (const spec of [...manifest.bots, ...manifest.schemas.map((s) => s.data).filter(Boolean) as NormalizedBotSpec[]].filter((s) => s.main)) {
       const bot = spec.schemaKey
         ? store.list().find((entry) => entry.nodeId === resolveNodePath(store.nodes.list(), `${manifest.appName}/${spec.schemaKey}`).id && entry.name === "data")
@@ -92,15 +92,22 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
       if (bot) {
         let openMain = !bot.mainThreadId;
         if (!openMain && bot.mainThreadId) {
-          const existing = await bb.sdk.threads.get({ threadId: bot.mainThreadId });
-          openMain = Boolean(existing.archivedAt);
+          try {
+            const existing = await bb.sdk.threads.get({ threadId: bot.mainThreadId });
+            openMain = Boolean(existing.archivedAt);
+          } catch {
+            openMain = true;
+          }
         }
-        if (openMain) await runMainCommand([botAddress(store.nodes.list(), bot), "--project", project.id], ctx, bb, store, ops, personalProjectId, caller);
+        if (openMain) {
+          await runMainCommand([botAddress(store.nodes.list(), bot), "--project", project.id], ctx, bb, store, ops, personalProjectId, caller);
+          if (manifest.charter && bot.nodeId === appNode!.id && bot.name === manifest.charter.toKey) openedCharterMain = true;
+        }
       }
     }
-    if (manifest.charter) {
-      const lead = store.list().find((entry) => entry.nodeId === appNode!.id && entry.name === manifest.charter!.toKey);
-      if (lead?.mainThreadId) await bb.sdk.threads.send({ threadId: lead.mainThreadId, mode: "queue-if-active", input: [{ type: "text", text: readFileSync(manifest.charter.messagePath, "utf8"), mentions: [] }] });
+    if (manifest.charter && (openedCharterMain || createdBotKeys.has(manifest.charter.toKey))) {
+      const lead = store.list().find((entry) => entry.nodeId === appNode!.id && entry.name === manifest.charter.toKey);
+      if (lead?.mainThreadId) await bb.sdk.threads.send({ threadId: lead.mainThreadId, mode: "queue-if-active", input: [{ type: "text", text: manifest.charter.message, mentions: [] }] });
     }
   }
   const treeStdout = dryRun && deployNewApp

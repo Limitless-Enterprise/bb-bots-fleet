@@ -13,7 +13,6 @@ import { assertFleetRegistryOperator, assertFleetSoulMutationFromThread, isFleet
 import { parseLaunchPresetFromFlags, rejectSlashInName } from "./fleet-launch-flags";
 import { runDeployCommand } from "./fleet-deploy";
 import { runMainCommand } from "./fleet-main";
-import { assertFleetProjectAllowed } from "./fleet-project-guard";
 
 const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
 const printable = (value: string) => value.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
@@ -313,8 +312,6 @@ async function runLink(argv: string[], _ctx: PluginCliContext, bb: BbPluginApi, 
   const { flags, positional, json } = parseFlags(argv, new Set(["--as", "--json"]), 2);
   const bot = resolveBotSelector(store, positional[0]!);
   const project = await resolveProject(bb, positional[1]!);
-  if (mode === "link" && flags.as === "owner") assertFleetProjectAllowed(project, "own");
-  if (mode === "link" && (flags.as === "member" || !flags.as)) assertFleetProjectAllowed(project, "bind");
   let action: "join" | "leave" | "own" | "release";
   if (mode === "unlink") action = "leave";
   else if (mode === "release") action = "release";
