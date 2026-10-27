@@ -441,6 +441,8 @@ bb bots tree [app] [--json]
 bb bots link <bot> <project> --as owner|member
 bb bots unlink <bot> <project>
 bb bots release <bot> <project>
+bb bots main <bot> [--project <p> | --personal] [--worktree] [--replace] [--json]
+bb bots deploy <manifest.json|yaml> [--apply] [--json]
 ```
 
 Create app and schema nodes before attaching bots with `--node`. Bot create and
@@ -448,8 +450,21 @@ update route through the same registry validation and private-state mirroring
 as the sidebar; link, unlink, and release adjust project membership and
 ownership atomically.
 
+`bb bots main` opens a main-bound conversation for a fleet bot. It uses the
+bot's launch preset and project execution defaults unless you override provider,
+model, reasoning, or permission flags. Pass `--replace` when a live main already
+exists. `--json` returns `{ botId, threadId, projectId, main: true }`.
+
+`bb bots deploy` loads a team manifest (JSON or YAML beside relative `soulFile`
+paths). Without `--apply` it dry-runs: a tabular or `--json` report plus a
+preview tree, with no registry writes. With `--apply` it upserts the sidebar
+section, app and schema nodes, app and schema-data bots, joins listed
+specialists, reconciles the single manifest owner, and opens main conversations
+for bots marked `main: true`. Partial failures set a non-zero exit code and
+append failed rows to the report while earlier apply steps remain committed.
+
 Fleet registry commands (`node create`, `create`, `update`, `link`, `unlink`,
-`release`, and later `main` / `deploy`) refuse calls that carry a BB thread
+`release`, `main`, and `deploy`) refuse calls that carry a BB thread
 context (`ctx.threadId`), except when the invoking conversation resolves through
 `resolveOwner` to the shared `fleet` steward bot. `show`, `tree`, and `list`
 stay readable from any conversation. On a single machine and OS user this is

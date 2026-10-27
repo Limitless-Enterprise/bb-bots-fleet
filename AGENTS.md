@@ -276,9 +276,10 @@ or reintroduce hover toolbars when making unrelated changes.
   bindings/inheritance, not project ownership.
   Never forge a sender, auto-create a conversation, or change permissions/bindings to send.
 - Fleet registry CLI (`bb bots node`, `create`, `update`, `show`, `tree`, `link`,
-  `unlink`, `release`) lives in `lib/fleet-cli.ts`; create nodes before `--node`
-  bots. User-facing command detail is in README Bot coordination and the external
-  Bots CLI LLD linked there.
+  `unlink`, `release`, `main`, `deploy`) lives in `lib/fleet-cli.ts` (`fleet-main.ts`,
+  `fleet-deploy.ts`, `manifest.ts`); create nodes before `--node` bots. User-facing
+  command detail is in README Bot coordination and the external Bots CLI LLD linked
+  there.
 - Frame messages as asynchronous agent coordination, not user approval. Include an exact
   sender-conversation reply command and discourage acknowledgement-only loops.
   Test delivery with the SDK fake host; never send unsolicited live test messages.
