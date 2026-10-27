@@ -7,7 +7,7 @@ import type { FleetOps } from "./fleet-cli";
 import { runTree } from "./fleet-cli";
 import { assertFleetRegistryOperator } from "./fleet-authz";
 import { assertFleetProjectAllowed } from "./fleet-project-guard";
-import { newNodeId, resolveNodePath, validateFoldedIntoAddress, validateSchemaNodeMetadata, type BotNodeMetadata } from "./bot-nodes";
+import { assertAppNodeNameAvailable, newNodeId, resolveNodePath, validateFoldedIntoAddress, validateSchemaNodeMetadata, type BotNodeMetadata } from "./bot-nodes";
 import { botAddress, resolveBotSelector, resolveMachine, resolveProject } from "./fleet-resolve";
 import { loadManifestFile, readManifestSoul, topologicalBotOrder, type NormalizedBotSpec } from "./manifest";
 import { runMainCommand } from "./fleet-main";
@@ -60,6 +60,7 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   let appNode = store.nodes.list().find((node) => node.kind === "app" && node.name === manifest.appName && !node.parentNodeId) ?? null;
   const deployNewApp = !appNode;
   if (!appNode) {
+    assertAppNodeNameAvailable(store.nodes.list(), store.list(), manifest.appName);
     appNode = { id: newNodeId(), kind: "app", name: manifest.appName, parentNodeId: null, projectId: project.id, sectionId: null, metadata: {}, createdAt: Date.now() };
     if (dryRun) report.push({ action: "node", target: manifest.appName, status: "skipped" });
     else {
@@ -83,13 +84,21 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     const patch: Partial<{ role: string; soul: string; launchPreset: BotMetadata["launchPreset"]; parentBotId: string | null }> = {};
     if (existing.role !== spec.role) patch.role = spec.role;
     if (sha256(soul) !== sha256(existing.soul)) patch.soul = soul;
-    if (spec.launch && JSON.stringify(existing.launchPreset) !== JSON.stringify(spec.launch)) patch.launchPreset = spec.launch;
+    if (spec.launch) {
+      if (JSON.stringify(existing.launchPreset) !== JSON.stringify(spec.launch)) patch.launchPreset = spec.launch;
+    } else if (existing.launchPreset != null) patch.launchPreset = null;
     if ((existing.parentBotId ?? null) !== parentId) patch.parentBotId = parentId;
+    let joinedProject = false;
+    if (spec.projectRole === "member" && !existing.linkedProjectIds.includes(project.id) && !dryRun) {
+      await ops.updateProjectRole(existing.id, "join", project.id);
+      joinedProject = true;
+    }
     if (Object.keys(patch).length && !dryRun) await ops.updateBot(existing.id, patch);
-    report.push({ action: "bot", target: address, status: Object.keys(patch).length ? dryRun ? "skipped" : "updated" : "unchanged" });
+    report.push({ action: "bot", target: address, status: Object.keys(patch).length || joinedProject ? dryRun ? "skipped" : "updated" : "unchanged" });
     if (spec.projectRole === "owner" && !store.projectOwner(project.id) && !dryRun) await ops.updateProjectRole(existing.id, "own", project.id);
   };
 
+  const schemaUpserts: Array<{ spec: NormalizedBotSpec; nodeId: string }> = [];
   for (const schema of manifest.schemas) {
     const metadata: BotNodeMetadata = { ...(schema.dataServicePath ? { dataServicePath: schema.dataServicePath } : {}), ...(schema.database ? { database: schema.database } : {}), ...(schema.foldedInto ? { foldedInto: schema.foldedInto } : {}) };
     let schemaNode = store.nodes.list().find((node) => node.parentNodeId === appNode!.id && node.name === schema.key);
@@ -110,9 +119,10 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
         if (!dryRun) store.nodes.save(schemaNode);
       }
     }
-    if (schema.data && schemaNode) await upsert(schema.data, schemaNode.id);
+    if (schema.data && schemaNode) schemaUpserts.push({ spec: schema.data, nodeId: schemaNode.id });
   }
   for (const spec of topologicalBotOrder(manifest.bots)) await upsert(spec, appNode!.id);
+  for (const { spec, nodeId } of schemaUpserts) await upsert(spec, nodeId);
   for (const specialist of manifest.specialists) {
     const bot = resolveBotSelector(store, specialist);
     if (!bot.linkedProjectIds.includes(project.id) && !dryRun) await ops.updateProjectRole(bot.id, "join", project.id);
