@@ -115,7 +115,10 @@ export function loadManifestFile(manifestPath: string) {
     readSoul(baseDir, bot.soulPath);
   }
   for (const schema of schemas) {
-    if (schema.data) readSoul(baseDir, schema.data.soulPath);
+    if (schema.data) {
+      readSoul(baseDir, schema.data.soulPath);
+      if (schema.data.parentKey && !raw.bots[schema.data.parentKey]) throw new Error(`Unknown parent bot key: ${schema.data.parentKey}`);
+    }
     if (schema.foldedInto && !raw.bots[schema.foldedInto]) throw new Error(`foldedInto must name a bot key: ${schema.foldedInto}`);
   }
   return {

@@ -58,7 +58,6 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   report.push({ action: "section", target: manifest.appName, status: sectionId ? "unchanged" : dryRun ? "skipped" : "created" });
 
   let appNode = store.nodes.list().find((node) => node.kind === "app" && node.name === manifest.appName && !node.parentNodeId) ?? null;
-  const deployNewApp = !appNode;
   if (!appNode) {
     assertAppNodeNameAvailable(store.nodes.list(), store.list(), manifest.appName);
     appNode = { id: newNodeId(), kind: "app", name: manifest.appName, parentNodeId: null, projectId: project.id, sectionId: null, metadata: {}, createdAt: Date.now() };
@@ -67,6 +66,10 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
       store.nodes.save(appNode);
       report.push({ action: "node", target: manifest.appName, status: "created" });
     }
+  } else if (appNode.projectId !== project.id) {
+    appNode = { ...appNode, projectId: project.id };
+    if (!dryRun) store.nodes.save(appNode);
+    report.push({ action: "node", target: manifest.appName, status: dryRun ? "skipped" : "updated" });
   }
 
   const upsert = async (spec: NormalizedBotSpec, nodeId: string) => {
@@ -148,7 +151,7 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
       }
     }
   }
-  const previewTree = dryRun && deployNewApp ? dryRunManifestTree(manifest, project.id, store) : null;
+  const previewTree = dryRun ? dryRunManifestTree(manifest, project.id, store) : null;
   const treeStdout = previewTree
     ? (flags.json ? JSON.stringify(previewTree) : previewTree.apps.flatMap((block) => block.lines).join("\n"))
     : (await runTree([manifest.appName, ...(flags.json ? ["--json"] : [])], ctx, store)).stdout ?? "";
