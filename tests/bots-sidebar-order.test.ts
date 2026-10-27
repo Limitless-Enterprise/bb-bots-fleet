@@ -6,7 +6,7 @@ describe("botsInSidebarOrder", () => {
   it("orders bots by section with Main first and labels sections", () => {
     const alpha = { ...bot, id: "a", name: "Alpha", sectionId: null };
     const beta = { ...bot, id: "b", name: "Beta", sectionId: "sec-1" };
-    const placements = botsInSidebarOrder([beta, alpha], [{ id: "sec-1", name: "Fleet", createdAt: 0, updatedAt: 0 }]);
+    const placements = botsInSidebarOrder([beta, alpha], [{ id: "sec-1", name: "Fleet", order: 0 }]);
     expect(placements.map((entry) => entry.bot.id)).toEqual(["a", "b"]);
     expect(placements.map((entry) => entry.sectionLabel)).toEqual(["Main", "Fleet"]);
   });

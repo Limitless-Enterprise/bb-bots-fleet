@@ -6,6 +6,7 @@ import {
   ASSIGN_TO_BOT_THREAD_ACTION_GROUP,
   ASSIGN_TO_BOT_THREAD_ACTION_ID,
   assignToBotThreadActionItem,
+  type AssignToBotThreadActionData,
 } from "../lib/assign-to-bot-thread-action";
 import { bot, personalProjectId, thread } from "./fixtures";
 import type { PluginThreadActionTarget } from "@get-bb/plugin-sdk/app";
@@ -33,18 +34,18 @@ describe("assign-to-bot thread action registration", () => {
     const registration = app.threadActions.find((entry) => entry.id === ASSIGN_TO_BOT_THREAD_ACTION_ID);
     expect(registration?.title).toBe("Assign to bot");
     expect(registration?.group).toBe(ASSIGN_TO_BOT_THREAD_ACTION_GROUP);
-    expect(registration?.group > "4_lifecycle").toBe(true);
+    expect(registration!.group! > "4_lifecycle").toBe(true);
   });
 });
 
 describe("assignToBotThreadActionItem", () => {
-  const baseData = {
+  const baseData: AssignToBotThreadActionData = {
     loaded: true,
     bots: [bot],
     sections: [],
     threadBindings: [{ threadId: "owned", botId: bot.id }],
     threads: [thread("owned", 1), thread("free", 2, { projectId: personalProjectId })],
-    rpc: { call: vi.fn(async () => ({})) },
+    rpc: { call: vi.fn(async () => ({})) } as AssignToBotThreadActionData["rpc"],
   };
 
   it("hides for bot-owned, archived, and empty-bot states", () => {
@@ -96,9 +97,9 @@ describe("assignToBotThreadActionItem", () => {
     const success = vi.spyOn(toast, "success");
     await action?.run?.({ value: bot.id, requestRename: vi.fn() });
     expect(baseData.rpc.call).toHaveBeenCalledWith("conversation_assign", { botId: bot.id, threadId: "free" });
-    const view = success.mock.calls[0]?.[1]?.action;
-    expect(view?.label).toBe("View");
-    view?.onClick();
+    const view = success.mock.calls[0]?.[1]?.action as { label: string; onClick: () => void };
+    expect(view.label).toBe("View");
+    view.onClick();
     expect(navigate.toPluginPanel).toHaveBeenCalledWith("bots", { subPath: "thread/free" });
   });
 });
