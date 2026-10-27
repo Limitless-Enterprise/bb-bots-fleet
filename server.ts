@@ -9,6 +9,7 @@ import { createLegacyImporter } from "./lib/migrate-bots";
 import { browseProjectDirectory, createWorkProject } from "./lib/project-creation";
 import { isFleetPluginOrigin } from "./lib/bot-plugin-origins";
 import { registerBotsCli } from "./lib/bots-cli";
+import { initFleetReservedProjectSettings, getReservedProjectIds, assertFleetProjectAllowed } from "./lib/fleet-reserved-projects";
 import { createBotMemory } from "./lib/bot-memory";
 import { botMemoryToolSchema } from "./lib/bot-memory-tool";
 import { registerBotMentions } from "./lib/bot-mentions";
@@ -23,6 +24,7 @@ const CHANGED = "project-bots-changed";
 const START_MARKER = /^\[bb-bot-start:([a-f0-9-]{36})\]/;
 
 export default async function plugin(bb: BbPluginApi) {
+  await initFleetReservedProjectSettings(bb);
   const store = createBotStore(bb);
   const publish = () => bb.realtime.publish(CHANGED, { updatedAt: Date.now() });
   const state = createPrivateBotState(bb, store, publish);
@@ -52,17 +54,21 @@ export default async function plugin(bb: BbPluginApi) {
   }
   async function validateLinks(ids: string[]) {
     if (new Set(ids).size !== ids.length) throw new Error("A project can only be linked once");
+    const reserved = getReservedProjectIds(bb);
     const projects = await bb.sdk.projects.list();
     const legacyHomes = new Set(store.list().map((bot) => bot.legacyHomeProjectId));
     for (const id of ids) {
-      if (!projects.some((project) => project.id === id && project.kind === "standard") || legacyHomes.has(id)) throw new Error("Link an existing work project, not a legacy bot home");
+      assertFleetProjectAllowed(id, reserved, "bind");
+      const project = projects.find((entry) => entry.id === id);
+      if (!project || project.kind !== "standard" || legacyHomes.has(id)) throw new Error("Link an existing work project, not a legacy bot home");
     }
   }
   function validateSection(id: string | null) {
     if (id !== null && !store.sections().some((section) => section.id === id)) throw new Error("Section no longer exists");
   }
   async function validateConversationProject(bot: BotMetadata, projectId: string) {
-    if (projectId !== await personalProjectId() && !bot.linkedProjectIds.includes(projectId)) throw new Error("Choose a projectless conversation or link this project to the bot first");
+    const personalId = await personalProjectId();
+    if (projectId !== personalId && !bot.linkedProjectIds.includes(projectId)) throw new Error("Choose a projectless conversation or link this project to the bot first");
   }
   const memory = createBotMemory(bb, store, publish);
   const ops = createBotOps({ bb, store, state, publish, serial, importLegacy, personalProjectId, validateLinks, validateSection, validateConversationProject });
@@ -216,7 +222,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
   bb.events.on("thread.created", async ({ thread }) => { await routeNewThread(thread, true); });
 
-  registerBotsCli(bb, store, memory, resolveOwner, ops);
+  registerBotsCli(bb, store, memory, resolveOwner, ops, personalProjectId);
   registerBotMentions(bb, store);
 
   bb.rpc.register(rpcContract, {
@@ -231,7 +237,18 @@ export default async function plugin(bb: BbPluginApi) {
       personalId = personal.id;
       const bots = store.list();
       const legacyHomes = new Set(bots.map((bot) => bot.legacyHomeProjectId));
-      return { bots, projectOwners: store.projectOwners().map(({ projectId, botId }) => ({ projectId, botId })), warnings: [...warnings, ...store.launchPresetStorageWarnings(), ...state.warnings()], personalProjectId: personalId, threadBindings: store.bindings(), sections: store.sections(), hosts: hosts.map((host) => ({ id: host.id, name: host.name, connected: host.status === "connected" })), projects: projects.filter((project) => project.kind === "standard" && !legacyHomes.has(project.id)).map((project) => ({ id: project.id, name: project.name })) };
+      const reserved = getReservedProjectIds(bb);
+      return {
+        bots,
+        projectOwners: store.projectOwners().map(({ projectId, botId }) => ({ projectId, botId })),
+        warnings: [...warnings, ...store.launchPresetStorageWarnings(), ...state.warnings()],
+        personalProjectId: personalId,
+        threadBindings: store.bindings(),
+        sections: store.sections(),
+        hosts: hosts.map((host) => ({ id: host.id, name: host.name, connected: host.status === "connected" })),
+        projects: projects.filter((project) => project.kind === "standard" && !legacyHomes.has(project.id) && !reserved.has(project.id)).map((project) => ({ id: project.id, name: project.name })),
+        reservedProjectIds: [...reserved],
+      };
     },
     bot_create: createBot,
     bot_prepare: ({ botId }) => serial(botId, () => state.prepare(botId)),
@@ -317,7 +334,10 @@ export default async function plugin(bb: BbPluginApi) {
       if (existing && existing !== botId) throw new Error("Conversation already belongs to another bot");
       if (store.owner(threadId) === botId) return { ok: true } as const;
       const needsLink = thread.projectId !== await personalProjectId() && thread.projectId !== bot.legacyHomeProjectId && !bot.linkedProjectIds.includes(thread.projectId);
-      if (needsLink) await validateLinks([thread.projectId]);
+      if (needsLink) {
+        assertFleetProjectAllowed(thread.projectId, getReservedProjectIds(bb), "bind");
+        await validateLinks([thread.projectId]);
+      }
       // Membership and the new association commit together; a competing binding
       // must win without leaving an unwanted membership behind.
       // Explicit false is an outside drop at the end; omitted preserves dialog ordering.

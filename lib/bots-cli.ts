@@ -87,7 +87,7 @@ export function frameBotMessage(sender: Sender, message: string): string {
   ].join("\n");
 }
 
-export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMemory, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, ops?: FleetOps) {
+export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMemory, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, ops?: FleetOps, personalProjectId?: () => Promise<string>) {
   bb.cli.register({
     name: "bots", summary: "List bots and send attributed asynchronous messages to their conversations",
     commands: [
@@ -116,7 +116,8 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, memory: BotMem
         const fleet = new Set(FLEET_COMMANDS.map((command) => command.name));
         if (fleet.has(argv[0] as typeof FLEET_COMMANDS[number]["name"])) {
           if (!ops) throw new Error("Fleet CLI is unavailable");
-          return await runFleetCommand(argv[0]!, argv.slice(1), ctx, bb, store, ops, resolveOwner, memory);
+          if (!personalProjectId) throw new Error("Fleet CLI is unavailable");
+          return await runFleetCommand(argv[0]!, argv.slice(1), ctx, bb, store, ops, resolveOwner, memory, personalProjectId);
         }
         const options = parse(argv);
         if (!options) return { exitCode: 0, stdout: USAGE };

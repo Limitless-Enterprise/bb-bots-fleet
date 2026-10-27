@@ -186,6 +186,17 @@ export function createBotStore(bb: BbPluginApi) {
         return save(update(current));
       }).immediate();
     },
+    removeRegistryBot(id: string) {
+      db.transaction(() => {
+        if (!get(id)) return;
+        db.prepare("DELETE FROM bot_memory_history WHERE entry_id IN (SELECT id FROM bot_memory_entries WHERE bot_id = ?)").run(id);
+        db.prepare("DELETE FROM bot_memory_entries WHERE bot_id = ?").run(id);
+        db.prepare("DELETE FROM bot_project_owners WHERE bot_id = ?").run(id);
+        db.prepare("DELETE FROM bot_threads WHERE bot_id = ?").run(id);
+        db.prepare("DELETE FROM bot_starts WHERE bot_id = ?").run(id);
+        db.prepare("DELETE FROM bots WHERE id = ?").run(id);
+      }).immediate();
+    },
     require(id: string) { const bot = get(id); if (!bot) throw new Error("Bot no longer exists"); return bot; },
     saveAll(bots: BotMetadata[]) { db.transaction(() => { bots.forEach(save); })(); },
     bindings(): { threadId: string; botId: string }[] { return db.prepare("SELECT thread_id AS threadId, bot_id AS botId FROM bot_threads ORDER BY thread_id").all() as { threadId: string; botId: string }[]; },

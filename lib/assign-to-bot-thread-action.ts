@@ -24,6 +24,7 @@ export type AssignToBotThreadActionData = {
   sections: BotSection[];
   threadBindings: Array<{ threadId: string; botId: string }>;
   threads: ReturnType<typeof experimental_useSidebarThreads>["threads"];
+  reservedProjectIds: string[];
   loaded: boolean;
   rpc: ReturnType<typeof useRpc<typeof rpcContract>>;
 };
@@ -35,6 +36,7 @@ function useAssignToBotData(): AssignToBotThreadActionData {
   const [sections, setSections] = useState<BotSection[]>([]);
   const [threadBindings, setThreadBindings] = useState<Array<{ threadId: string; botId: string }>>([]);
   const [loaded, setLoaded] = useState(false);
+  const [reservedProjectIds, setReservedProjectIds] = useState<string[]>([]);
   const refreshSequence = useRef(0);
   const connectionState = useRealtimeConnectionState();
   const previousConnection = useRef(connectionState);
@@ -46,6 +48,7 @@ function useAssignToBotData(): AssignToBotThreadActionData {
         setBots(result.bots);
         setSections(result.sections);
         setThreadBindings(result.threadBindings);
+        setReservedProjectIds(result.reservedProjectIds ?? []);
         setLoaded(true);
       },
       () => {
@@ -60,7 +63,7 @@ function useAssignToBotData(): AssignToBotThreadActionData {
     previousConnection.current = connectionState;
   }, [connectionState, refresh]);
   useRealtime("project-bots-changed", refresh);
-  return { bots, sections, threadBindings, threads: sidebar.threads, loaded, rpc };
+  return { bots, sections, threadBindings, threads: sidebar.threads, reservedProjectIds, loaded, rpc };
 }
 
 export function assignToBotThreadActionItem(
@@ -69,6 +72,7 @@ export function assignToBotThreadActionItem(
   const { thread, data, navigate } = input;
   if (thread.archivedAt) return null;
   if (!data.loaded || data.bots.length === 0) return null;
+  if (thread.projectId && data.reservedProjectIds.includes(thread.projectId)) return null;
   const owners = conversationOwners(data.threads, data.threadBindings);
   if (owners.has(thread.id)) return null;
 

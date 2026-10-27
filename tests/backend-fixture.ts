@@ -33,6 +33,7 @@ export async function backend(initialProjects: Project[] = [project()]) {
     projects: {
       list: async (args) => args?.includePersonal ? [...projects, personal] : projects,
       get: async ({ projectId }) => { const found = [...projects, personal].find((p) => p.id === projectId); if (!found) throw new Error("Project missing"); return found; },
+      defaultExecutionOptions: async () => ({ providerId: "test-harness", model: "example", reasoningLevel: "medium", permissionMode: "auto" as const }),
       create: async () => { throw new Error("Private bot state must never create backing projects"); },
       update: async () => { throw new Error("The bot must not rename projects"); },
     },

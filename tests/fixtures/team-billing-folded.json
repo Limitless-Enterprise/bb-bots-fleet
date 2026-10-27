@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "app": "billing",
+  "project": "project",
+  "defaults": {
+    "machine": "Execution machine",
+    "launch": {
+      "provider": "test-harness",
+      "model": "example",
+      "permission": "auto"
+    }
+  },
+  "bots": {
+    "lead": {
+      "role": "Module Lead",
+      "soulFile": "souls/lead.md",
+      "projectRole": "owner"
+    },
+    "api": {
+      "role": "API",
+      "soulFile": "souls/ui.md"
+    }
+  },
+  "schemas": {
+    "ledger": {
+      "foldedInto": "api"
+    }
+  },
+  "specialists": []
+}
