@@ -137,7 +137,7 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
       report.push({ action: "bot", target: address, status: dryRun ? "skipped" : "created" });
       return;
     }
-    const patch: Partial<{ role: string; soul: string; hostId: string; launchPreset: BotMetadata["launchPreset"]; parentBotId: string | null }> = {};
+    const patch: Partial<{ role: string; soul: string; hostId: string; launchPreset: BotMetadata["launchPreset"]; parentBotId: string | null; sectionId: string | null }> = {};
     if (existing.role !== spec.role) patch.role = spec.role;
     if (existing.hostId !== machine.id) patch.hostId = machine.id;
     if (sha256(soul) !== sha256(existing.soul)) patch.soul = soul;
