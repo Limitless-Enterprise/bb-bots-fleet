@@ -2,8 +2,34 @@ import Database from "better-sqlite3";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, expect, it } from "vitest";
-import { migrateFromPlugin, stateCopyFailureMessage } from "../lib/migrate-from-plugin";
+import { afterEach, expect, it, vi } from "vitest";
+
+const cpSyncControl = vi.hoisted(() => {
+  let realCpSync: typeof import("node:fs").cpSync | null = null;
+  const mock = vi.fn<typeof import("node:fs").cpSync>();
+  return {
+    mock,
+    reset() {
+      if (realCpSync) mock.mockImplementation(realCpSync);
+    },
+    setReal(fn: typeof import("node:fs").cpSync) {
+      realCpSync = fn;
+      mock.mockImplementation(fn);
+    },
+    real() {
+      if (!realCpSync) throw new Error("cpSync mock not initialized");
+      return realCpSync;
+    },
+  };
+});
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  cpSyncControl.setReal(actual.cpSync);
+  return { ...actual, cpSync: cpSyncControl.mock };
+});
+
+import { migrateFromPlugin } from "../lib/migrate-from-plugin";
 import { createFakePluginHost, makeMessageDispatchHookContext, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import type { BotMetadata } from "../contract";
 import { createBotStore } from "../lib/bot-store";
@@ -12,7 +38,10 @@ import plugin from "../server";
 import { avatar, backend, project } from "./backend-fixture";
 
 const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
+afterEach(() => {
+  cpSyncControl.reset();
+  for (const cleanup of cleanups.splice(0)) cleanup();
+});
 
 function seedSidebarDatabase(path: string, botId = "bot_sidebar", linkedProjectIds: string[] = ["project"]) {
   mkdirSync(join(path, "state", botId), { recursive: true });
@@ -228,10 +257,6 @@ it("does not copy sidebar state when database import fails", async () => {
 });
 
 it("names the staged state path when post-commit state copy fails", async () => {
-  const stateStaging = join("/tmp", "bots-fleet-migrate-abc", "state-staging");
-  expect(stateCopyFailureMessage(stateStaging, new Error("disk full"))).toBe(
-    `Failed to copy bot state from staged path ${stateStaging}: disk full`,
-  );
   const dataDir = mkdtempSync(join(tmpdir(), "bots-migrate-copy-"));
   cleanups.push(() => rmSync(dataDir, { recursive: true, force: true }));
   const sidebarDir = join(dataDir, "plugins", "bots-sidebar");
@@ -243,7 +268,15 @@ it("names the staged state path when post-commit state copy fails", async () => 
     sdk: { plugins: { list: async () => ({ plugins: [{ id: "bots-sidebar", enabled: false }] }) } },
   });
   cleanups.push(() => host.harness.lifecycle.dispose());
-  await expect(migrateFromPlugin(host.bb, createBotStore(host.bb), "bots-sidebar")).resolves.toMatchObject({ botCount: 1 });
+  const realCpSync = cpSyncControl.real();
+  cpSyncControl.mock
+    .mockImplementationOnce((src, dest, options) => realCpSync(src, dest, options))
+    .mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
+  await expect(migrateFromPlugin(host.bb, createBotStore(host.bb), "bots-sidebar")).rejects.toThrow(
+    /Failed to copy bot state from staged path .*state-staging: disk full/,
+  );
 });
 
 it("finishes pending starts and routes threads created under bots-sidebar origin", async () => {
