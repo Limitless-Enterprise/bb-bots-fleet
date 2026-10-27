@@ -54,8 +54,18 @@ export async function runMainCommand(argv: string[], ctx: PluginCliContext, bb: 
   let providerId = preset?.execution?.providerId;
   let model = preset?.execution?.model;
   let reasoningLevel = preset?.execution?.reasoningLevel ?? "medium";
-  let permissionMode: "accept-edits" | "auto" | "full" = preset?.execution?.permissionMode ?? "auto";
-  if (permissionMode === "full") { warnings.push("full permission was replaced with auto"); permissionMode = "auto"; }
+  let permissionMode: "accept-edits" | "auto" = "auto";
+  switch (preset?.execution?.permissionMode as string | null | undefined) {
+    case "accept-edits":
+      permissionMode = "accept-edits";
+      break;
+    case "auto":
+      permissionMode = "auto";
+      break;
+    case "full":
+      warnings.push("full permission was replaced with auto");
+      break;
+  }
   if (flags.provider) providerId = String(flags.provider);
   if (flags.model) model = String(flags.model);
   if (flags.reasoning) reasoningLevel = String(flags.reasoning);
