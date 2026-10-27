@@ -89,7 +89,7 @@ function buildConversationTree(threads: readonly PluginSidebarThread[], mainThre
   };
 }
 
-// Chats retains its existing recent/attention policy.
+// recent/other split keeps the prior attention policy for callers that partition roots.
 export function conversationTree(threads: readonly PluginSidebarThread[], mainThreadId: string | null, activeThreadId: string | null, recentLimit = 4) {
   const { summaries, ...tree } = buildConversationTree(threads, mainThreadId, activeThreadId);
   return {

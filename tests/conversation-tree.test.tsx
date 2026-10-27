@@ -31,13 +31,13 @@ async function mount(personal: boolean, older = false) {
     sidebarThreads: { projects: [{ id: projectId, name: "Test project", isPersonal: personal, href: "/projects/project", settingsHref: "/projects/project/settings" }], threads: rows },
     rpc: { bots_list: () => ({ personalProjectId, bots: personal ? [] : [bot], sections: [], hosts: [], projects: [{ id: "project", name: "Test project" }], warnings: [], threadBindings: personal ? [] : rows.filter((row) => !row.parentThreadId).map((row) => ({ threadId: row.id, botId: bot.id })) }) },
   });
-  await slot.findByText(personal ? "Chats" : "Test bot");
-  if (!personal) fireEvent.click(slot.getByRole("button", { name: "Expand conversations for Test bot" }));
+  await slot.findByText("Test bot");
+  fireEvent.click(slot.getByRole("button", { name: "Expand conversations for Test bot" }));
   return slot;
 }
 
-it.each([false, true])("children default closed and form nested, independently collapsible branches (personal=%s)", async (personal) => {
-  const slot = await mount(personal);
+it("children default closed and form nested, independently collapsible branches", async () => {
+  const slot = await mount(false);
   expect(slot.queryByText("Conversation child")).toBeNull();
   const toggle = slot.getByRole("button", { name: "Expand children of Conversation root" });
   expect(toggle.textContent?.trim()).toBe("1");
@@ -58,22 +58,22 @@ it.each([false, true])("children default closed and form nested, independently c
   expect(slot.inspection.navigateCalls).toEqual([]);
 });
 
-it.each([false, true])("reveals and highlights the current chat without expanding unrelated branches (personal=%s)", async (personal) => {
-  const slot = await mount(personal);
+it("reveals and highlights the current chat without expanding unrelated branches", async () => {
+  const slot = await mount(false);
   expect(slot.container.querySelector('[data-sidebar-thread-id="root"]')?.getAttribute("aria-current")).toBe("page");
   fireEvent.click(slot.getByRole("button", { name: "Navigate grandchild" }));
   await slot.findByText("Conversation grandchild");
   const active = slot.container.querySelector('[data-sidebar-thread-id="grandchild"]')!;
   expect(active.getAttribute("aria-current")).toBe("page");
-  expect(active.closest(personal ? ".recent-row" : ".thread-row")?.getAttribute("aria-current")).toBe("page");
+  expect(active.closest(".thread-row")?.getAttribute("aria-current")).toBe("page");
   expect(slot.container.querySelector('[data-sidebar-thread-id="root"]')?.hasAttribute("aria-current")).toBe(false);
   expect(slot.getByRole("button", { name: "Collapse children of Conversation root" }).getAttribute("aria-expanded")).toBe("true");
   expect(slot.getByRole("button", { name: "Collapse children of Conversation child" }).getAttribute("aria-expanded")).toBe("true");
   expect(slot.queryByText("Conversation sibling-child")).toBeNull();
 });
 
-it.each([false, true])("keeps an old active descendant visible outside the recent limit (personal=%s)", async (personal) => {
-  const slot = await mount(personal, true);
+it("keeps an old active descendant visible outside the recent limit", async () => {
+  const slot = await mount(false, true);
   expect(slot.queryByText("Conversation grandchild")).toBeNull();
   fireEvent.click(slot.getByRole("button", { name: "Navigate grandchild" }));
   await waitFor(() => expect(slot.container.querySelector('[data-sidebar-thread-id="grandchild"]')?.getAttribute("aria-current")).toBe("page"));

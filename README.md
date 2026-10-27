@@ -61,7 +61,7 @@ Demo data only: [Bots rail panel](docs/screenshots/sidebar.png) (sidebar + in-pa
 [Activity badge](docs/screenshots/bot-activity.png) ·
 [Bot new-conversation action](docs/screenshots/bot-new-chat-hover.png) ·
 [Hover archive](docs/screenshots/conversation-hover.png) ·
-[Drag to assign](docs/screenshots/conversation-drop.png) ·
+[Conversation reorder](docs/screenshots/conversation-drop.png) ·
 [Create bot](docs/screenshots/bot-create.png) ·
 [Edit bot](docs/screenshots/bot-editor.png) ·
 [Project roles](docs/screenshots/bot-projects.png) ·
@@ -204,12 +204,11 @@ in bot state.
 Bots Fleet registers BB's **Bots** navigation-rail panel: the familiar sidebar
 tree on the left and conversation content on the right. The rail icon can show a
 badge for **bot-assigned** conversations only (explicit bindings and child
-threads that inherit a bound ancestor—not unassigned **Chats**): a warning count
+threads that inherit a bound ancestor—not unassigned threads): a warning count
 when those conversations wait for your input, or a critical dot when unread
 assigned conversations have errors (no count).
 
-- The panel home offers **Create bot** and **New chat** when no conversation is
-  selected.
+- The panel home offers **Create bot** when no conversation is selected.
 - Click a sidebar row to open that conversation **in the panel** with full
   `ThreadChat` (permissions inherit from the conversation).
 - **Open in BB** in the panel header opens the same conversation in BB's main
@@ -238,23 +237,18 @@ Within the Bots nav rail, the sidebar tree behaves as follows:
   machine. With multiple owned projects, prefer the first conversation's project if owned, then
   the first owned project in link order. Mere membership does not change the
   personal-workspace default. The project and machine remain editable.
-- Drag an unassigned conversation from **Chats** onto a bot, or use **Assign to
-  bot…** from its menu. Any bot can be chosen; it joins the conversation's work
+- Assign an unassigned conversation with the experimental **Assign to bot** thread
+  action (BB thread menu). Any bot can be chosen; it joins the conversation's work
   project as a member if needed. Projectless chats need no project link. History,
-  project, environment and existing child assignments stay unchanged. A drop does
-  not navigate away; use the confirmation's **View** action to open it.
-  Dropping on a bot's face makes the conversation first; the rest of the row
-  appends it. Both unfold the list immediately after assignment and scroll the
-  added conversation into view. Hold Shift anywhere on the row to
-  put it first instead (also unfolding the list). Drop an
-  existing top-level conversation on its own bot row to move it to the top.
+  project, environment, and existing child assignments stay unchanged. A success
+  toast offers **View** to open the conversation in the Bots panel.
+  Drop an existing top-level conversation on its own bot row to move it to the top.
 - Hover a conversation row to reveal its archive button, also available on
   keyboard focus and touch. It sits inline before the child count, never covering
   the title or disclosure. This uses BB's normal archive action, including children.
 - Each conversation's right-edge count/chevron reveals only its own children,
   collapsed by default. Once a bot is explicitly expanded, navigation reveals
   the viewed ancestor path. Navigation never expands a collapsed bot.
-  Chats retains its separate overflow.
 - The avatar's bottom-right spinner shows its **first conversation** working. Small pulsing dots
   to the left show other working conversations—even when collapsed. Three slots
   keep it compact; a **+** indicates overflow and the tooltip gives the exact count.
@@ -287,9 +281,9 @@ Within the Bots nav rail, the sidebar tree behaves as follows:
   a project source, BB may fall back to an available source.
 - Save is explicit; Enter never submits text fields. Drafts survive tab changes.
   Delete section and discard unsaved bot state/context edits use plugin confirmation
-  dialogs. No sidebar overlay toolbars or activity dates; the hidden toggle stays at bottom.
-- Chats contains unassigned conversations and is collapsible/resizable. Several
-  bots may share a project without sharing identity or conversation ownership.
+  dialogs. No sidebar overlay toolbars, activity dates, or Chats pane; the hidden-bot
+  toggle stays at the bottom. Several bots may share a project without sharing identity
+  or conversation ownership.
 
 ## Plugin identity
 

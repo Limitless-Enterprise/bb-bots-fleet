@@ -4,8 +4,8 @@ Give recurring work a named specialist without tying its identity to one reposit
 
 - Named bots with configurable avatars, their own instructions, up to 3,000 characters of `MEMORY.md`, and private structured level-1 memory entries per bot.
 - Per-bot defaults for new conversations: harness, model, reasoning, permissions, starter prompt, and checkout or fresh worktree.
-- A **Bots** navigation-rail panel with the same sidebar tree (bots, conversations, Chats) and in-panel `ThreadChat`, plus a rail badge for bot-assigned conversations waiting for input or unread errors (see README § Bots navigation rail).
-- Drag-to-bot assignment for existing chats, plus inline archive controls.
+- A **Bots** navigation-rail panel with the sidebar tree (bots and conversations) and in-panel `ThreadChat`, plus a rail badge for bot-assigned conversations waiting for input or unread errors (see README § Bots navigation rail).
+- Assign unassigned conversations with the experimental **Assign to bot** thread action; inline archive controls on conversation rows.
 - Project membership and one optional owner per project to route new conversations. Existing conversation assignments stay intact.
 - `@` completion for bot references and attributed asynchronous coordination through `bb bots list` and `bb bots message`, plus a fleet registry CLI (`node`, `create`, `update`, `show`, `tree`, `link`, `unlink`, `release`) for app nodes and bot addresses.
 

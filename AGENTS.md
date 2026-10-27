@@ -43,7 +43,8 @@ existing conversation histories and track legacy home project IDs for compatibil
   owner. Never reassign old history or capture threads created before a claim.
   Explicit bot starts and new inherited contexts join that bot to the work project
   without changing its owner. Personal/legacy-home projects cannot be owned.
-  Unassigned conversations still belong in Chats. Preserve all main pointers.
+  Unassigned conversations are not listed in the Bots sidebar; assign them with the
+  experimental **Assign to bot** thread action. Preserve all main pointers.
 - Preserve the first-turn dispatch binding before agent configuration; a
   fire-and-forget thread.created event alone is insufficient. Configuration
   lookups are read-only; they must not preempt an inherited binding + join.
@@ -91,7 +92,7 @@ Register BB's **Bots** nav panel via `app.slots.navPanel` (`BotsPage`,
 navigation rail; row navigation defaults to in-panel `thread/<id>`;
 Cmd/Ctrl-click and **Open in BB** use `navigate.toThread` (split with the
 modifier). Nav rail badge counts only bot-owned threads (`bots_list`
-threadBindings plus `conversationOwners` inheritance); unassigned Chats never
+threadBindings plus `conversationOwners` inheritance); unassigned threads never
 contribute.
 
 Preserve the approved interaction model below. An older source snapshot once
@@ -103,19 +104,13 @@ or reintroduce hover toolbars when making unrelated changes.
   A separate end chevron toggles the whole list and counts all top-level roots.
   Double-clicking the bot name/avatar also toggles the list; the first click
   retains normal navigation, without repeating it on the second click.
-  Bots start collapsed; navigation and dialog assignment never automatically expand them.
-  Successful outside conversation drops immediately unfold the destination bot,
-  then scroll the added conversation into view when the refreshed list renders.
+  Bots start collapsed; navigation and assignment never automatically expand them.
   Explicit expansion shows all roots, including the former main. Children retain
   independent disclosure; reveal active ancestor paths only within an expanded bot.
 - Drag above/below a sibling to reorder it, or use Move to top in its context menu.
-  Dropping a Chat on a bot's avatar makes it first; the rest of the row atomically
-  assigns and appends it. Highlight the two drop zones while dragging. Shift-drop places it
-  first instead. Both unfold the destination. Dropping an existing root on its own
-  bot row moves it first. Short row hints: Add to end / Make first; longer help
-  belongs in the drag ghost. Use a single subtle row boundary and filled active
-  zone, not nested outlines or dashed avatar borders. Hide the row + during dragging.
-  Shift-drop retains nesting. Persist threadOrder privately in the plugin DB;
+  Dropping an existing root on its own bot row moves it first. Shift-drop nests.
+  Use a single subtle row boundary and filled active zone, not nested outlines or
+  dashed avatar borders. Hide the row + during dragging. Persist threadOrder privately in the plugin DB;
   manual order wins, unplaced roots/siblings follow newest-created first. Activity,
   unread state, pinning, and navigation never reshuffle them. No bot-root overflow.
   Do not change bindings, parents, projects, environments, or historical main
@@ -218,8 +213,8 @@ or reintroduce hover toolbars when making unrelated changes.
   provider-defined reasoning/service-tier values unchanged. New-chat presets
   do not apply to forks. Keep tests/public-sdk.test.ts passing.
 - Do not restore Move main or Make main. Keep existing histories and legacy pointers.
-- Keep the later additions: worktree composer, conversation/Chats menus and
-  rename/archive, older unassigned Chats grouped under N Other, and status icons.
+- Keep the later additions: worktree composer, conversation menus and
+  rename/archive, and status icons.
 - Highlight the actual current chat with `[aria-current="page"]` styles (the
   Tailwind `aria-current:` variant only matches `true`). Child branches default
   closed. Put the child count and disclosure chevron at the RIGHT end (`6 ›`),
@@ -234,18 +229,18 @@ or reintroduce hover toolbars when making unrelated changes.
   activity, and disable all animation under reduced motion. Counts never navigate.
 - Completed conversation status is a green dot when unviewed, then a smaller gray
   dot after viewing—not a checkmark. Preserve working/waiting/error indicators.
-- Unassigned Chats may be assigned through the dialog or dragged onto a bot row.
-  Offer all bots, not only existing project members. Join a valid work project as
-  Member atomically with the new binding; do not move the thread's project,
-  environment, history or main pointers, and never steal existing associations.
-  Personal chats need no membership. Keep legacy-home recovery rules.
-  Conversation dragging is pointer-based within the sidebar: keep BB's split
+- Unassigned conversations are assigned through the experimental **Assign to bot**
+  thread action, not a Bots-sidebar Chats pane or drag-from-Chats. Offer all bots,
+  not only existing project members. Join a valid work project as Member atomically
+  with the new binding; do not move the thread's project, environment, history or
+  main pointers, and never steal existing associations. Personal chats need no
+  membership. Keep legacy-home recovery rules.
+  Conversation reorder dragging is pointer-based within the sidebar: keep BB's split
   pointer handler, cancel on Escape/blur/unmount, and let drag-to-split take over
   outside the sidebar. Show a drop target/ghost, suppress click-through, preserve
-  bot reorder dragging, and keep the assignment dialog for keyboard/touch.
-- Chats is a collapsible, vertically resizable bottom section. Keep its size and
-  collapsed state per client; the hidden-bot toggle belongs below the bot list,
-  not in the Bots heading. Do not reintroduce the per-row activity dates.
+  bot reorder dragging.
+- The hidden-bot toggle belongs below the bot list, not in the Bots heading. Do not
+  reintroduce the per-row activity dates or a Chats pane in the sidebar.
 - Before reloading, run `pnpm typecheck`, `pnpm test`, and `bb plugin build`.
   `tests/sidebar-ux.test.tsx` protects the approved interactions, not just markup.
   For visual changes also check the live UI on hover, menu open, and edit open.

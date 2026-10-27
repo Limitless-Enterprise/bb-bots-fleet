@@ -91,7 +91,7 @@ describe("bots page", () => {
       },
     });
     expect(slot.getByRole("button", { name: "Create bot" })).toBeTruthy();
-    expect(slot.getByRole("button", { name: "New chat" })).toBeTruthy();
+    expect(slot.queryByRole("button", { name: "New chat" })).toBeNull();
   });
 
   it("renders Open in BB for a thread subpath", async () => {
