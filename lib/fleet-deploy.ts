@@ -54,16 +54,11 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   for (const specialist of manifest.specialists) resolveBotSelector(store, specialist);
 
   let appNode = store.nodes.list().find((node) => node.kind === "app" && node.name === manifest.appName && !node.parentNodeId) ?? null;
-  if (!dryRun) {
-    const foldedApp = appNode ?? { id: "", kind: "app" as const, name: manifest.appName, parentNodeId: null, projectId: project.id, sectionId: null, metadata: {}, createdAt: 0 };
-    for (const schema of manifest.schemas) {
-      if (schema.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), foldedApp, schema.foldedInto);
-    }
-  }
 
-  let sectionId = store.sections().find((section) => section.name === manifest.appName)?.id ?? null;
+  const existingSectionId = store.sections().find((section) => section.name === manifest.appName)?.id ?? null;
+  let sectionId = existingSectionId;
   if (!sectionId && !dryRun) sectionId = (await ops.createSection(manifest.appName)).id;
-  report.push({ action: "section", target: manifest.appName, status: sectionId ? "unchanged" : dryRun ? "skipped" : "created" });
+  report.push({ action: "section", target: manifest.appName, status: existingSectionId ? "unchanged" : dryRun ? "skipped" : "created" });
 
   if (!appNode) {
     assertAppNodeNameAvailable(store.nodes.list(), store.list(), manifest.appName);
@@ -141,6 +136,12 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     }
   };
   for (const spec of topologicalBotOrder(manifest.bots)) await upsert(spec, appNode!.id);
+
+  if (!dryRun) {
+    for (const schema of manifest.schemas) {
+      if (schema.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, schema.foldedInto);
+    }
+  }
 
   const schemaUpserts: Array<{ spec: NormalizedBotSpec; nodeId: string }> = [];
   for (const schema of manifest.schemas) {
