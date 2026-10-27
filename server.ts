@@ -4,6 +4,7 @@ import { rpcContract, stateReadSchema, stateMutationSchema, stateMutationToolSch
 import { createBotStore, nextTimestamp } from "./lib/bot-store";
 import { applyState, BotStateConflictError, createPrivateBotState, stateContent } from "./lib/private-state";
 import { createBotOps } from "./lib/bot-ops";
+import { assertFleetProjectAllowed } from "./lib/fleet-project-guard";
 import { memoryFacts, mutateStateDocument } from "./lib/state-actions";
 import { createLegacyImporter } from "./lib/migrate-bots";
 import { browseProjectDirectory, createWorkProject } from "./lib/project-creation";
@@ -55,14 +56,21 @@ export default async function plugin(bb: BbPluginApi) {
     const projects = await bb.sdk.projects.list();
     const legacyHomes = new Set(store.list().map((bot) => bot.legacyHomeProjectId));
     for (const id of ids) {
-      if (!projects.some((project) => project.id === id && project.kind === "standard") || legacyHomes.has(id)) throw new Error("Link an existing work project, not a legacy bot home");
+      const project = projects.find((entry) => entry.id === id);
+      if (!project || project.kind !== "standard" || legacyHomes.has(id)) throw new Error("Link an existing work project, not a legacy bot home");
+      assertFleetProjectAllowed(project, "bind");
     }
   }
   function validateSection(id: string | null) {
     if (id !== null && !store.sections().some((section) => section.id === id)) throw new Error("Section no longer exists");
   }
   async function validateConversationProject(bot: BotMetadata, projectId: string) {
-    if (projectId !== await personalProjectId() && !bot.linkedProjectIds.includes(projectId)) throw new Error("Choose a projectless conversation or link this project to the bot first");
+    const personalId = await personalProjectId();
+    if (projectId !== personalId) {
+      const project = (await bb.sdk.projects.list({ includePersonal: true })).find((entry) => entry.id === projectId);
+      if (project) assertFleetProjectAllowed(project, "bind");
+      if (!bot.linkedProjectIds.includes(projectId)) throw new Error("Choose a projectless conversation or link this project to the bot first");
+    }
   }
   const memory = createBotMemory(bb, store, publish);
   const ops = createBotOps({ bb, store, state, publish, serial, importLegacy, personalProjectId, validateLinks, validateSection, validateConversationProject });
@@ -216,7 +224,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
   bb.events.on("thread.created", async ({ thread }) => { await routeNewThread(thread, true); });
 
-  registerBotsCli(bb, store, memory, resolveOwner, ops);
+  registerBotsCli(bb, store, memory, resolveOwner, ops, personalProjectId);
   registerBotMentions(bb, store);
 
   bb.rpc.register(rpcContract, {

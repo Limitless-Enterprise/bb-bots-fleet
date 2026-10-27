@@ -11,6 +11,9 @@ import { listBotCliActivity } from "./bot-cli-activity";
 import { botAddress, parentBotLabel, resolveBotSelector, resolveMachine, resolveProject } from "./fleet-resolve";
 import { assertFleetRegistryOperator, assertFleetSoulMutationFromThread, isFleetSteward } from "./fleet-authz";
 import { parseLaunchPresetFromFlags, rejectSlashInName } from "./fleet-launch-flags";
+import { runDeployCommand } from "./fleet-deploy";
+import { runMainCommand } from "./fleet-main";
+import { assertFleetProjectAllowed } from "./fleet-project-guard";
 
 const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
 const printable = (value: string) => value.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
@@ -26,6 +29,8 @@ export const FLEET_COMMANDS = [
   { name: "unlink", summary: "Remove a bot from a project", usage: "bb bots unlink <bot> <project> [--json]" },
   { name: "release", summary: "Release project ownership", usage: "bb bots release <bot> <project> [--json]" },
   { name: "tree", summary: "Print the fleet tree for one app or the whole fleet", usage: "bb bots tree [<app>] [--json]" },
+  { name: "main", summary: "Open a bound main conversation for a bot", usage: "bb bots main <bot> ..." },
+  { name: "deploy", summary: "Deploy an app team from a manifest", usage: "bb bots deploy <manifest> [--apply] [--json]" },
 ] as const;
 
 type FlagMap = Record<string, string | boolean>;
@@ -87,7 +92,7 @@ async function callerBot(ctx: PluginCliContext, store: BotStore, resolveOwner: (
   return botId ? store.get(botId) : null;
 }
 
-export async function runFleetCommand(command: string, argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, memory: BotMemory): Promise<{ exitCode: number; stdout?: string; stderr?: string }> {
+export async function runFleetCommand(command: string, argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, memory: BotMemory, personalProjectId: () => Promise<string>): Promise<{ exitCode: number; stdout?: string; stderr?: string }> {
   try {
     const caller = await callerBot(ctx, store, resolveOwner);
     if (command === "node") {
@@ -116,6 +121,8 @@ export async function runFleetCommand(command: string, argv: string[], ctx: Plug
       return await runLink(argv, ctx, bb, store, ops, "release");
     }
     if (command === "tree") return await runTree(argv, ctx, store);
+    if (command === "main") return await runMainCommand(argv, ctx, bb, store, ops, personalProjectId, caller);
+    if (command === "deploy") return await runDeployCommand(argv, ctx, bb, store, ops, personalProjectId, caller);
     throw new Error(`Unknown fleet command: ${command}`);
   } catch (error) {
     return { exitCode: 1, stderr: error instanceof Error ? error.message : String(error) };
@@ -306,6 +313,8 @@ async function runLink(argv: string[], _ctx: PluginCliContext, bb: BbPluginApi, 
   const { flags, positional, json } = parseFlags(argv, new Set(["--as", "--json"]), 2);
   const bot = resolveBotSelector(store, positional[0]!);
   const project = await resolveProject(bb, positional[1]!);
+  if (mode === "link" && flags.as === "owner") assertFleetProjectAllowed(project, "own");
+  if (mode === "link" && (flags.as === "member" || !flags.as)) assertFleetProjectAllowed(project, "bind");
   let action: "join" | "leave" | "own" | "release";
   if (mode === "unlink") action = "leave";
   else if (mode === "release") action = "release";
@@ -319,7 +328,7 @@ async function runLink(argv: string[], _ctx: PluginCliContext, bb: BbPluginApi, 
   return { exitCode: 0, stdout: json ? JSON.stringify(out) : `${action} ${project.name}${result.changed ? "" : " (unchanged)"}` };
 }
 
-async function runTree(argv: string[], _ctx: PluginCliContext, store: BotStore) {
+export async function runTree(argv: string[], _ctx: PluginCliContext, store: BotStore) {
   const { flags, positional, json } = parseFlags(argv, new Set(["--json"]), "rest");
   const filter = positional[0];
   const nodes = store.nodes.list();
