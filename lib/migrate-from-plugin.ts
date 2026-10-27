@@ -84,7 +84,9 @@ export async function migrateFromPlugin(bb: BbPluginApi, store: BotStore, source
       try {
         cpSync(stateStaging, join(targetDir, "state"), { recursive: true, force: true });
       } catch (error) {
-        throw new Error(stateCopyFailureMessage(stateStaging, error));
+        const pendingPath = join(targetDir, `state-migration-pending-${Date.now()}`);
+        cpSync(stateStaging, pendingPath, { recursive: true });
+        throw new Error(stateCopyFailureMessage(pendingPath, error));
       }
     }
     const copiedStateBots = existsSync(stateStaging) ? summary.botCount : 0;

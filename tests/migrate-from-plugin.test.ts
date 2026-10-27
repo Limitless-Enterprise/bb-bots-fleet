@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, expect, it, vi } from "vitest";
@@ -273,10 +273,15 @@ it("names the staged state path when post-commit state copy fails", async () => 
     .mockImplementationOnce((src, dest, options) => realCpSync(src, dest, options))
     .mockImplementationOnce(() => {
       throw new Error("disk full");
-    });
+    })
+    .mockImplementationOnce((src, dest, options) => realCpSync(src, dest, options));
   await expect(migrateFromPlugin(host.bb, createBotStore(host.bb), "bots-sidebar")).rejects.toThrow(
-    /Failed to copy bot state from staged path .*state-staging: disk full/,
+    /Failed to copy bot state from staged path .*state-migration-pending-\d+: disk full/,
   );
+  const fleetDir = join(dataDir, "plugins", "bots-fleet");
+  const pendingDir = readdirSync(fleetDir).find((name) => name.startsWith("state-migration-pending-"));
+  expect(pendingDir).toBeDefined();
+  expect(readFileSync(join(fleetDir, pendingDir!, "bot_sidebar", "SOUL.md"), "utf8")).toBe("Sidebar soul");
 });
 
 it("finishes pending starts and routes threads created under bots-sidebar origin", async () => {

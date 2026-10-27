@@ -27,11 +27,14 @@ export function LaunchPresetEditor({ value, onChange, hostId, disabled }: {
             <input type="checkbox" className="accent-primary" checked={execution.permissionMode !== null} disabled={disabled || !execution.providerId} onChange={(event) => onChange({ ...value, execution: { ...execution, permissionMode: event.target.checked ? "accept-edits" : null } })} />
             Custom permissions
           </label>
-          {execution.permissionMode !== null ? <PermissionModePicker providerId={execution.providerId} value={execution.permissionMode} routing={routing} disabled={disabled || !hostId} align="start" className="h-7" onChange={(permissionMode) => {
-            if (permissionMode === "full") return;
-            const next = permissionMode as FleetPermissionMode;
-            onChange(current => current.execution?.providerId === execution.providerId && current.execution.permissionMode !== null ? { ...current, execution: { ...current.execution, permissionMode: next } } : current);
-          }} /> : null}
+          {execution.permissionMode !== null ? <div className="space-y-1">
+            <PermissionModePicker providerId={execution.providerId} value={execution.permissionMode} routing={routing} disabled={disabled || !hostId} align="start" className="h-7" onChange={(permissionMode) => {
+              if (permissionMode === "full") return;
+              const next = permissionMode as FleetPermissionMode;
+              onChange(current => current.execution?.providerId === execution.providerId && current.execution.permissionMode !== null ? { ...current, execution: { ...current.execution, permissionMode: next } } : current);
+            }} />
+            <p className="text-[11px] text-muted-foreground">Full permission isn&apos;t allowed for bots.</p>
+          </div> : null}
         </div>
       </div> : <p className="text-[11px] text-muted-foreground">Use the project’s model and permissions.</p>}
     </div>
