@@ -23,10 +23,30 @@ const cpSyncControl = vi.hoisted(() => {
   };
 });
 
+const rmSyncControl = vi.hoisted(() => {
+  let realRmSync: typeof import("node:fs").rmSync | null = null;
+  const mock = vi.fn<typeof import("node:fs").rmSync>();
+  return {
+    mock,
+    reset() {
+      if (realRmSync) mock.mockImplementation(realRmSync);
+    },
+    setReal(fn: typeof import("node:fs").rmSync) {
+      realRmSync = fn;
+      mock.mockImplementation(fn);
+    },
+    real() {
+      if (!realRmSync) throw new Error("rmSync mock not initialized");
+      return realRmSync;
+    },
+  };
+});
+
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   cpSyncControl.setReal(actual.cpSync);
-  return { ...actual, cpSync: cpSyncControl.mock };
+  rmSyncControl.setReal(actual.rmSync);
+  return { ...actual, cpSync: cpSyncControl.mock, rmSync: rmSyncControl.mock };
 });
 
 import { migrateFromPlugin } from "../lib/migrate-from-plugin";
@@ -40,6 +60,7 @@ import { avatar, backend, project } from "./backend-fixture";
 const cleanups: (() => void)[] = [];
 afterEach(() => {
   cpSyncControl.reset();
+  rmSyncControl.reset();
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
@@ -282,6 +303,29 @@ it("names the staged state path when post-commit state copy fails", async () => 
   const pendingDir = readdirSync(fleetDir).find((name) => name.startsWith("state-migration-pending-"));
   expect(pendingDir).toBeDefined();
   expect(readFileSync(join(fleetDir, pendingDir!, "bot_sidebar", "SOUL.md"), "utf8")).toBe("Sidebar soul");
+});
+
+it("completes migration when pending cleanup fails after state is installed", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "bots-migrate-rm-"));
+  cleanups.push(() => rmSync(dataDir, { recursive: true, force: true }));
+  const sidebarDir = join(dataDir, "plugins", "bots-sidebar");
+  mkdirSync(sidebarDir, { recursive: true });
+  seedSidebarDatabase(sidebarDir);
+  const host = createFakePluginHost({
+    pluginId: "bots-fleet",
+    dataDir,
+    sdk: { plugins: { list: async () => ({ plugins: [{ id: "bots-sidebar", enabled: false }] }) } },
+  });
+  cleanups.push(() => host.harness.lifecycle.dispose());
+  const realRmSync = rmSyncControl.real();
+  rmSyncControl.mock.mockImplementation((path, options) => {
+    if (String(path).includes("state-migration-pending")) throw new Error("EBUSY");
+    return realRmSync(path, options);
+  });
+  const result = await migrateFromPlugin(host.bb, createBotStore(host.bb), "bots-sidebar");
+  expect(result.copiedStateBots).toBe(1);
+  expect(readFileSync(join(dataDir, "plugins", "bots-fleet", "state", "bot_sidebar", "SOUL.md"), "utf8")).toBe("Sidebar soul");
+  expect(createBotStore(host.bb).state(PLUGIN_MIGRATION_STATE_KEY)).toMatchObject({ sourcePluginId: "bots-sidebar" });
 });
 
 it("finishes pending starts and routes threads created under bots-sidebar origin", async () => {

@@ -100,6 +100,13 @@ it("makes permission overrides explicit and passes the selected mode to new conv
   expect(props().defaultPermissionMode).toBe("auto");
 });
 
+it("notes that full permission is not allowed when custom permissions are enabled", async () => {
+  const { slot } = await mount(preset);
+  const dialog = await edit(slot);
+  fireEvent.click(within(dialog).getByRole("checkbox", { name: "Custom permissions" }));
+  expect(within(dialog).getByText("Full permission isn't allowed for bots.")).toBeTruthy();
+});
+
 it.each([false, true])("seeds fresh conversations without overriding ownership or later user choices (owned=%s)", async owned => {
   const { slot, change } = await mount(preset, owned);
   fireEvent.click(slot.getByRole("button", { name: `New conversation with ${bot.name}` }));

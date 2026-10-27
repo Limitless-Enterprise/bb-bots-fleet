@@ -51,8 +51,11 @@ existing conversation histories and track legacy home project IDs for compatibil
   main pointers/history. While sidebar migration is pending (sidebar source still
   has bot data, including an unreadable `data.db`) and migrate-from has not
   recorded `plugin-migration-from`, defer version-1 project/KV import and reject
-  `bot_create` with the migrate-from instruction. Import v2 state from legacy homes
-  once when available, preserving a cached fallback and warning if unavailable; never
+  `bot_create` with the migrate-from instruction. On migrate-from, after the DB
+  commit, staged exports copy through `state-migration-pending-*` in plugin data
+  into `state/`; if that final copy fails, keep exports in the pending directory
+  and name that path in errors. Import v2 state from legacy homes once when
+  available, preserving a cached fallback and warning if unavailable; never
   overwrite newer private state on a later retry.
 - Bot state belongs to plugin storage, never a working repository. State writes
   use SQLite transactions and expected hashes/revisions. Markdown/JSON files are
@@ -205,8 +208,9 @@ or reintroduce hover toolbars when making unrelated changes.
   the same identity revision and atomic Save; omitted fields from older clients
   preserve it, null clears it. Native provider/model and permission pickers use
   the bot's selected host. Model/permission overrides are opt-in; existing bots
-  inherit project defaults. Custom permission saves allow accept-edits and auto
-  only; reject full on write paths. Coerce stored full to null and surface a
+  inherit project defaults. Custom permission UI notes that full is disallowed
+  for bots; saves allow accept-edits and auto only; reject full on write paths.
+  Coerce stored full to null and surface a
   `bots_list` warning until rewritten. A worktree preference changes only generic + starts
   in owned projects, never personal chats or explicit checkout/fork actions.
   Starter prompts seed empty drafts only. Capture all seeds on opening, never
