@@ -7,13 +7,37 @@ import type { FleetOps } from "./fleet-cli";
 import { runTree } from "./fleet-cli";
 import { assertFleetRegistryOperator } from "./fleet-authz";
 import { assertFleetProjectAllowed } from "./fleet-project-guard";
-import { assertAppNodeNameAvailable, newNodeId, validateFoldedIntoAddress, validateSchemaNodeMetadata, type BotNodeMetadata } from "./bot-nodes";
+import { assertAppNodeNameAvailable, newNodeId, validateFoldedIntoAddress, validateSchemaNodeMetadata, type BotNode, type BotNodeMetadata } from "./bot-nodes";
 import { botAddress, resolveBotSelector, resolveMachine, resolveProject } from "./fleet-resolve";
 import { loadManifestFile, readManifestSoul, topologicalBotOrder, type NormalizedBotSpec } from "./manifest";
 import { runMainCommand } from "./fleet-main";
 
 const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
 const avatar = () => avatarSchema.parse({ color: "#168b75", shape: "round", expression: "curious", motion: "still" });
+
+function validateDeployFoldedInto(
+  manifest: ReturnType<typeof loadManifestFile>,
+  dryRun: boolean,
+  nodes: ReturnType<BotStore["nodes"]["list"]>,
+  bots: BotMetadata[],
+  app: BotNode,
+  foldedInto: string,
+) {
+  try {
+    validateFoldedIntoAddress(nodes, bots, app, foldedInto);
+  } catch (error) {
+    if (!dryRun) throw error;
+    const suffix = foldedInto.slice(manifest.appName.length + 1);
+    if (
+      foldedInto.startsWith(`${manifest.appName}/`) &&
+      (suffix === "api" || suffix === "builder") &&
+      manifest.bots.some((bot) => bot.key === suffix)
+    ) {
+      return;
+    }
+    throw error;
+  }
+}
 
 function dryRunManifestTree(manifest: ReturnType<typeof loadManifestFile>, projectId: string, store: BotStore) {
   const lines = [`${manifest.appName} (project ${projectId})`];
@@ -161,7 +185,7 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     }
     if (schema.foldedInto) {
       try {
-        validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, schema.foldedInto);
+        validateDeployFoldedInto(manifest, dryRun, store.nodes.list(), store.list(), appNode!, schema.foldedInto);
       } catch (error) {
         exitCode = 1;
         report.push({

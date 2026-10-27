@@ -19,4 +19,14 @@ describe("fleet main and deploy", () => {
     expect(main.exitCode).toBe(0);
     expect(JSON.parse(main.stdout!).main).toBe(true);
   });
+
+  it("dry-runs deploy when foldedInto targets a manifest bot not yet in the store", async () => {
+    const host = await backend();
+    hosts.push(host);
+    const run = host.harness.behavior.runCli.bind(host.harness.behavior);
+    const manifest = join(process.cwd(), "tests/fixtures/team-billing-folded.json");
+    const preview = await run(["deploy", manifest, "--json"]);
+    expect(preview.exitCode).toBe(0);
+    expect(host.store.list().some((bot) => bot.name === "api")).toBe(false);
+  });
 });
