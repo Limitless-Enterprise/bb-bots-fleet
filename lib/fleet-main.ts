@@ -38,7 +38,7 @@ export async function runMainCommand(argv: string[], ctx: PluginCliContext, bb: 
     if (!found) throw new Error(`Project not found: ${ownedId}`);
     project = found;
   }
-  assertFleetProjectAllowed(project, "bind");
+  assertFleetProjectAllowed(bb, project, "bind");
   const projectId = project.id;
   if (bot.mainThreadId && !flags.replace) {
     try {

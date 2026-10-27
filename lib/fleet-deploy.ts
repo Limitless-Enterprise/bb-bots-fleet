@@ -78,7 +78,7 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   const dryRun = !flags.apply;
   const manifest = loadManifestFile(manifestPath);
   const project = await resolveProject(bb, manifest.projectSelector);
-  assertFleetProjectAllowed(project, "own");
+  assertFleetProjectAllowed(bb, project, "own");
   if (!manifest.defaultMachine) throw new Error("Manifest must set defaults.machine or app.machine");
   const machine = await resolveMachine(bb, manifest.defaultMachine);
   const report: Array<{ action: string; target: string; status: string }> = [];
@@ -109,15 +109,11 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     report.push({ action: "node", target: manifest.appName, status: dryRun ? "skipped" : "updated" });
   }
 
-  const releaseManifestOwnerUnless = async (botId: string | null) => {
-    if (dryRun) return;
-    const current = store.projectOwner(project.id);
-    if (current && current.botId !== botId) await ops.updateProjectRole(current.botId, "release", project.id);
-  };
   const reconcileManifestOwner = async (botId: string) => {
     if (dryRun) return;
-    await releaseManifestOwnerUnless(botId);
-    if (store.projectOwner(project.id)?.botId !== botId) await ops.updateProjectRole(botId, "own", project.id);
+    const current = store.projectOwner(project.id);
+    if (current && current.botId !== botId) return;
+    if (!current) await ops.updateProjectRole(botId, "own", project.id);
   };
 
   const upsert = async (spec: NormalizedBotSpec, nodeId: string) => {
@@ -126,15 +122,29 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     const existing = store.list().find((bot) => bot.nodeId === nodeId && bot.name === spec.key);
     const address = existing ? botAddress(store.nodes.list(), existing) : `${manifest.appName}/${spec.key}`;
     if (!existing) {
+      const currentOwner = store.projectOwner(project.id);
+      const canClaimOwner = spec.projectRole === "owner" && !currentOwner;
       if (!dryRun) {
-        if (spec.projectRole === "owner") await releaseManifestOwnerUnless(null);
-        await ops.createBot({ name: spec.key, role: spec.role, hostId: machine.id, avatar: avatar(), sectionId, linkedProjectIds: [project.id], ownedProjectIds: spec.projectRole === "owner" ? [project.id] : undefined, soul, nodeId, parentBotId: parentId, ...(spec.launch ? { launchPreset: spec.launch } : {}) });
-        if (spec.projectRole === "owner") {
-          const created = store.list().find((bot) => bot.nodeId === nodeId && bot.name === spec.key);
-          if (created) await reconcileManifestOwner(created.id);
-        }
+        await ops.createBot({
+          name: spec.key,
+          role: spec.role,
+          hostId: machine.id,
+          avatar: avatar(),
+          sectionId,
+          linkedProjectIds: [project.id],
+          ownedProjectIds: canClaimOwner ? [project.id] : undefined,
+          soul,
+          nodeId,
+          parentBotId: parentId,
+          ...(spec.launch ? { launchPreset: spec.launch } : {}),
+        });
+        const created = store.list().find((bot) => bot.nodeId === nodeId && bot.name === spec.key);
+        if (created && spec.projectRole === "owner") await reconcileManifestOwner(created.id);
       }
       report.push({ action: "bot", target: address, status: dryRun ? "skipped" : "created" });
+      if (spec.projectRole === "owner" && currentOwner) {
+        report.push({ action: "ownership", target: address, status: "skipped-other-owner" });
+      }
       return;
     }
     const patch: Partial<{ role: string; soul: string; hostId: string; launchPreset: BotMetadata["launchPreset"]; parentBotId: string | null; sectionId: string | null }> = {};
@@ -162,7 +172,14 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     }
     if (Object.keys(patch).length && !dryRun) await ops.updateBot(existing.id, patch);
     report.push({ action: "bot", target: address, status: Object.keys(patch).length || joinedProject ? dryRun ? "skipped" : "updated" : "unchanged" });
-    if (spec.projectRole === "owner" && !dryRun) await reconcileManifestOwner(existing.id);
+    if (spec.projectRole === "owner" && !dryRun) {
+      const current = store.projectOwner(project.id);
+      if (current && current.botId !== existing.id) {
+        report.push({ action: "ownership", target: address, status: "skipped-other-owner" });
+      } else {
+        await reconcileManifestOwner(existing.id);
+      }
+    }
   };
 
   const mainSpecs = [...manifest.bots, ...manifest.schemas.map((s) => s.data).filter(Boolean) as NormalizedBotSpec[]].filter((s) => s.main);

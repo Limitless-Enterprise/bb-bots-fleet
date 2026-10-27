@@ -100,7 +100,7 @@ const memoryHistorySchema = z.object({ revision: z.number().int(), body: z.strin
 const memoryStatsSchema = z.object({ entries: z.number().int().nonnegative(), bytes: z.number().int().nonnegative() }).strict();
 
 export const rpcContract = defineRpcContract({
-  bots_list: { input: z.null(), output: z.object({ bots: z.array(metadataSchema), hosts: z.array(hostSchema), sections: z.array(sectionSchema), projects: z.array(projectSchema), threadBindings: z.array(z.object({ threadId: id, botId: id }).strict()), warnings: z.array(z.string()), personalProjectId: id, projectOwners: z.array(projectOwnerSchema).optional() }).strict() },
+  bots_list: { input: z.null(), output: z.object({ bots: z.array(metadataSchema), hosts: z.array(hostSchema), sections: z.array(sectionSchema), projects: z.array(projectSchema), threadBindings: z.array(z.object({ threadId: id, botId: id }).strict()), warnings: z.array(z.string()), personalProjectId: id, projectOwners: z.array(projectOwnerSchema).optional(), reservedProjectIds: z.array(id).optional() }).strict() },
   project_browse: { input: projectBrowseInputSchema, output: projectBrowseOutputSchema },
   project_create: { input: projectCreateInputSchema, output: projectSchema },
   bot_create: { input: z.object({ ...editFields, hostId: id, launchPreset: launchPresetSchema.nullable().optional() }).strict(), output: metadataSchema },

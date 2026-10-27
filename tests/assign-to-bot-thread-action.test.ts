@@ -45,6 +45,7 @@ describe("assignToBotThreadActionItem", () => {
     sections: [],
     threadBindings: [{ threadId: "owned", botId: bot.id }],
     threads: [thread("owned", 1), thread("free", 2, { projectId: personalProjectId })],
+    reservedProjectIds: [],
     rpc: { call: vi.fn(async () => ({})) } as AssignToBotThreadActionData["rpc"],
   };
 
@@ -64,6 +65,15 @@ describe("assignToBotThreadActionItem", () => {
     expect(assignToBotThreadActionItem({
       thread: target("free"),
       data: { ...baseData, bots: [] },
+      sdk: {} as never,
+      navigate: { toPluginPanel: vi.fn() } as never,
+    })).toBeNull();
+  });
+
+  it("hides assign-to-bot for threads in reserved projects", () => {
+    expect(assignToBotThreadActionItem({
+      thread: target("free", { projectId: personalProjectId }),
+      data: { ...baseData, reservedProjectIds: [personalProjectId] },
       sdk: {} as never,
       navigate: { toPluginPanel: vi.fn() } as never,
     })).toBeNull();
