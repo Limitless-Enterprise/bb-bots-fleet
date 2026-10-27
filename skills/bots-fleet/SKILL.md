@@ -32,7 +32,8 @@ The runtime plugin ID is `bots-fleet`; its CLI is `bb bots`.
   right-click menus, worktree composer seeds).
 - Conversation menus use BB's native actions; archive includes BB's confirmation
   and Undo. Unassigned conversations are not listed in the Bots sidebar; assign
-  them with the experimental **Assign to bot** thread action.
+  them with the experimental **Assign to bot** thread action (not offered for
+  operator-reserved projects; see README § Plugin identity).
 - Edit bot has Bot, Context, Projects, and (for existing bots) Memory tabs.
   Context has one document picker; Memory lists level-1 entries and edits existing
   ones with hash-checked saves. Click the avatar to customize it or use its adjacent

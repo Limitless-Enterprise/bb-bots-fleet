@@ -239,7 +239,9 @@ Within the Bots nav rail, the sidebar tree behaves as follows:
   personal-workspace default. The project and machine remain editable.
 - Assign an unassigned conversation with the experimental **Assign to bot** thread
   action (BB thread menu). Any bot can be chosen; it joins the conversation's work
-  project as a member if needed. Projectless chats need no project link. History,
+  project as a member if needed. The action is hidden for threads in
+  operator-reserved projects (see § Plugin identity). Projectless chats need no
+  project link. History,
   project, environment, and existing child assignments stay unchanged. A success
   toast offers **View** to open the conversation in the Bots panel.
   Drop an existing top-level conversation on its own bot row to move it to the top.
@@ -289,7 +291,11 @@ Within the Bots nav rail, the sidebar tree behaves as follows:
 
 The runtime ID is **`bots-fleet`**, derived from package **`bb-plugin-bots-fleet`**.
 Settings shows **Bots Fleet**. Reload with `bb plugin reload bots-fleet`. The
-community plugin named `bots` is unrelated; Bots Fleet never reads its storage.
+**Reserved project IDs** setting accepts comma- or newline-separated BB project
+IDs that fleet bots may not own or bind to (for example a CTO coordination
+project). Reserved IDs are omitted from sidebar project pickers; **Assign to bot**,
+`bb bots link`, `bb bots main`, and `bb bots deploy` refuse them.
+The community plugin named `bots` is unrelated; Bots Fleet never reads its storage.
 
 Bots Fleet replaces **Bots Sidebar** (`bots-sidebar`) on a machine; the two do not
 run together. Installing Bots Fleet starts with empty plugin storage until you import
@@ -441,7 +447,8 @@ bb bots tree [app] [--json]
 bb bots link <bot> <project> --as owner|member
 bb bots unlink <bot> <project>
 bb bots release <bot> <project>
-bb bots main <bot> [--project <p> | --personal] [--worktree] [--replace] [--json]
+bb bots main <bot> [--project <p> | --personal] [--worktree]
+  [--prompt <text> | --prompt-file <p>] [--replace] [--json]
 bb bots deploy <manifest.json|yaml> [--apply] [--json]
 ```
 
@@ -452,16 +459,18 @@ ownership atomically.
 
 `bb bots main` opens a main-bound conversation for a fleet bot. It uses the
 bot's launch preset and project execution defaults unless you override provider,
-model, reasoning, or permission flags. Pass `--replace` when a live main already
-exists. `--json` returns `{ botId, threadId, projectId, main: true }`.
+model, reasoning, or permission flags. Seed the first turn with `--prompt` or
+`--prompt-file` when needed. Pass `--replace` when a live main already exists.
+`--json` returns `{ botId, threadId, projectId, main: true }`.
 
 `bb bots deploy` loads a team manifest (JSON or YAML beside relative `soulFile`
 paths). Without `--apply` it dry-runs: a tabular or `--json` report plus a
-preview tree, with no registry writes. With `--apply` it upserts the sidebar
-section, app and schema nodes, app and schema-data bots, joins listed
-specialists, reconciles the single manifest owner, and opens main conversations
-for bots marked `main: true`. Partial failures set a non-zero exit code and
-append failed rows to the report while earlier apply steps remain committed.
+preview tree, with no registry writes. With `--apply` it ensures **FLEET**,
+**SHARED**, and app-named sidebar sections, upserts app and schema nodes, app and
+schema-data bots, joins listed specialists, reconciles the single manifest owner,
+and opens main conversations for bots marked `main: true`. Partial failures set
+a non-zero exit code and append failed rows to the report while earlier apply
+steps remain committed.
 
 Fleet registry commands (`node create`, `create`, `update`, `link`, `unlink`,
 `release`, `main`, and `deploy`) refuse calls that carry a BB thread
