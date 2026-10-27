@@ -1,0 +1,36 @@
+version: 1
+team: billing
+tier: mvp
+app:
+  repository: Limitless-Enterprise/billing
+  bbProject: project
+  machine: Execution machine
+  surfaces: [web]
+  services: [business-service, data-service]
+  workspace: apps/billing
+schemas:
+  ledger:
+    data: { foldedInto: "api" }
+bots:
+  lead:
+    class: lead
+    projectRole: owner
+    lifecycle: long-lived
+    soul: bots/lead/SOUL.md
+    execution: { provider: test-harness, model: example, reasoningLevel: high, permissionMode: auto }
+    main: true
+  builder:
+    class: member
+    parent: lead
+    projectRole: member
+    lifecycle: long-lived
+    soul: bots/builder/SOUL.md
+    writes: [ui/web/, api/business-service/]
+    execution: { provider: test-harness, model: example, reasoningLevel: medium, permissionMode: auto }
+  api:
+    class: member
+    parent: lead
+    projectRole: member
+    lifecycle: long-lived
+    soul: bots/api/SOUL.md
+specialists: []

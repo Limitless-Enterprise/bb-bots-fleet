@@ -20,6 +20,18 @@ describe("fleet main and deploy", () => {
     expect(JSON.parse(main.stdout!).main).toBe(true);
   });
 
+  it("loads team.yaml example shape and deploys dry-run then apply", async () => {
+    const host = await backend();
+    hosts.push(host);
+    const run = host.harness.behavior.runCli.bind(host.harness.behavior);
+    const manifest = join(process.cwd(), "tests/fixtures/team-billing-yaml/team.yaml");
+    const preview = await run(["deploy", manifest, "--json"]);
+    if (preview.exitCode !== 0) throw new Error(preview.stderr ?? preview.stdout);
+    const applied = await run(["deploy", manifest, "--apply", "--json"]);
+    expect(applied.exitCode).toBe(0);
+    expect(host.store.list().some((bot) => bot.name === "api")).toBe(true);
+  });
+
   it("dry-runs deploy when foldedInto targets a manifest bot not yet in the store", async () => {
     const host = await backend();
     hosts.push(host);

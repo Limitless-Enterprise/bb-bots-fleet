@@ -3,7 +3,7 @@ import { dirname, extname, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import type { LaunchPreset } from "./launch-preset";
-import { launchPresetSchema } from "./launch-preset";
+import { fleetPermissionModeSchema, launchPresetSchema } from "./launch-preset";
 
 const launchBlockSchema = z.object({
   provider: z.string().optional(),
@@ -11,15 +11,16 @@ const launchBlockSchema = z.object({
   model: z.string().min(1).optional(),
   reasoning: z.string().optional(),
   reasoningLevel: z.string().optional(),
-  permission: z.enum(["accept-edits", "auto", "full"]).optional(),
-  permissionMode: z.enum(["accept-edits", "auto", "full"]).optional(),
+  permission: fleetPermissionModeSchema.optional(),
+  permissionMode: fleetPermissionModeSchema.optional(),
   workspace: z.enum(["checkout", "worktree"]).optional(),
   serviceTier: z.string().optional(),
   "service-tier": z.string().optional(),
 }).strict().partial();
 
 const botSpecSchema = z.object({
-  role: z.string().min(1),
+  role: z.string().min(1).optional(),
+  class: z.string().optional(),
   soulFile: z.string().optional(),
   soul: z.string().optional(),
   parent: z.string().optional(),
@@ -27,25 +28,40 @@ const botSpecSchema = z.object({
   launch: launchBlockSchema.optional(),
   execution: launchBlockSchema.optional(),
   main: z.boolean().optional(),
-}).strict().refine((spec) => Boolean(spec.soulFile ?? spec.soul), { message: "Bot spec requires soulFile or soul" });
+  lifecycle: z.string().optional(),
+  writes: z.array(z.string()).optional(),
+  humanApprovals: z.unknown().optional(),
+}).passthrough().refine((spec) => Boolean(spec.soulFile ?? spec.soul), { message: "Bot spec requires soulFile or soul" })
+  .refine((spec) => Boolean(spec.role ?? spec.class), { message: "Bot spec requires role or class" });
 
 const schemaSpecSchema = z.object({
   dataServicePath: z.string().optional(),
   database: z.string().optional(),
   data: z.union([botSpecSchema.extend({ foldedInto: z.string().optional() }), z.object({ foldedInto: z.string() })]).optional(),
   foldedInto: z.string().optional(),
-}).strict();
+}).passthrough();
+
+const appObjectSchema = z.object({
+  repository: z.string().optional(),
+  bbProject: z.string().optional(),
+  machine: z.string().optional(),
+  surfaces: z.array(z.string()).optional(),
+  services: z.array(z.string()).optional(),
+  workspace: z.string().optional(),
+}).passthrough();
 
 const rawManifestSchema = z.object({
   version: z.number().int().optional(),
-  app: z.union([z.string(), z.object({ bbProject: z.string().optional(), machine: z.string().optional() }).strict()]).optional(),
+  tier: z.string().optional(),
+  app: z.union([z.string(), appObjectSchema]).optional(),
   team: z.string().optional(),
   project: z.string().optional(),
-  defaults: z.object({ machine: z.string().optional(), launch: launchBlockSchema.optional(), execution: launchBlockSchema.optional() }).strict().optional(),
+  defaults: z.object({ machine: z.string().optional(), launch: launchBlockSchema.optional(), execution: launchBlockSchema.optional() }).passthrough().optional(),
   bots: z.record(z.string(), botSpecSchema).default({}),
   schemas: z.record(z.string(), schemaSpecSchema).default({}),
   specialists: z.array(z.string()).default([]),
-}).strict();
+  humanApprovals: z.record(z.string(), z.array(z.string())).optional(),
+}).passthrough();
 
 export type NormalizedBotSpec = {
   key: string;
@@ -62,7 +78,6 @@ export type NormalizedBotSpec = {
 function launchFromBlock(block: z.infer<typeof launchBlockSchema> | undefined, base: LaunchPreset | null): LaunchPreset | null {
   if (!block || !Object.keys(block).length) return base;
   const permission = block.permission ?? block.permissionMode;
-  if (permission === "full") throw new Error("Manifest launch permission cannot be full");
   const providerId = block.providerId ?? block.provider;
   const model = block.model;
   const merged: LaunchPreset = {
@@ -85,6 +100,10 @@ function readSoul(baseDir: string, soulPath: string) {
   return content;
 }
 
+function botRole(key: string, spec: z.infer<typeof botSpecSchema>) {
+  return spec.role ?? spec.class ?? key;
+}
+
 export function loadManifestFile(manifestPath: string) {
   const absolute = resolve(manifestPath);
   const baseDir = dirname(absolute);
@@ -95,7 +114,7 @@ export function loadManifestFile(manifestPath: string) {
   const defaultMachine = raw.defaults?.machine ?? (typeof raw.app === "object" ? raw.app.machine : undefined) ?? null;
   const defaultLaunch = launchFromBlock(raw.defaults?.launch ?? raw.defaults?.execution, null);
   const bots: NormalizedBotSpec[] = Object.entries(raw.bots).map(([key, spec]) => ({
-    key, role: spec.role, soulPath: (spec.soulFile ?? spec.soul)!, parentKey: spec.parent ?? null,
+    key, role: botRole(key, spec), soulPath: (spec.soulFile ?? spec.soul)!, parentKey: spec.parent ?? null,
     projectRole: spec.projectRole ?? null, launch: launchFromBlock(spec.launch ?? spec.execution, defaultLaunch),
     main: Boolean(spec.main), nodeKind: "app", schemaKey: null,
   }));
@@ -116,7 +135,7 @@ export function loadManifestFile(manifestPath: string) {
     const folded = foldedRaw ? normalizeFoldedInto(foldedRaw) : undefined;
     if (folded && spec.data && "role" in spec.data) throw new Error(`Schema ${key} cannot declare foldedInto together with a data bot`);
     const data = spec.data && !folded && "role" in spec.data ? {
-      key: "data", role: spec.data.role, soulPath: (spec.data.soulFile ?? spec.data.soul)!,
+      key: "data", role: botRole("data", spec.data), soulPath: (spec.data.soulFile ?? spec.data.soul)!,
       parentKey: spec.data.parent ?? null, projectRole: spec.data.projectRole ?? "member",
       launch: launchFromBlock(spec.data.launch ?? spec.data.execution, defaultLaunch),
       main: Boolean(spec.data.main), nodeKind: "schema-data" as const, schemaKey: key,
