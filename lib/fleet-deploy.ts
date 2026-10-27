@@ -7,7 +7,7 @@ import type { FleetOps } from "./fleet-cli";
 import { runTree } from "./fleet-cli";
 import { assertFleetRegistryOperator } from "./fleet-authz";
 import { assertFleetProjectAllowed } from "./fleet-project-guard";
-import { assertAppNodeNameAvailable, newNodeId, resolveNodePath, validateFoldedIntoAddress, validateSchemaNodeMetadata, type BotNodeMetadata } from "./bot-nodes";
+import { assertAppNodeNameAvailable, newNodeId, validateFoldedIntoAddress, validateSchemaNodeMetadata, type BotNodeMetadata } from "./bot-nodes";
 import { botAddress, resolveBotSelector, resolveMachine, resolveProject } from "./fleet-resolve";
 import { loadManifestFile, readManifestSoul, topologicalBotOrder, type NormalizedBotSpec } from "./manifest";
 import { runMainCommand } from "./fleet-main";
@@ -121,9 +121,14 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   };
 
   const mainSpecs = [...manifest.bots, ...manifest.schemas.map((s) => s.data).filter(Boolean) as NormalizedBotSpec[]].filter((s) => s.main);
-  const resolveMainBot = (spec: NormalizedBotSpec) => spec.schemaKey
-    ? store.list().find((entry) => entry.nodeId === resolveNodePath(store.nodes.list(), `${manifest.appName}/${spec.schemaKey}`).id && entry.name === "data")
-    : store.list().find((entry) => entry.nodeId === appNode!.id && entry.name === spec.key);
+  const resolveMainBot = (spec: NormalizedBotSpec) => {
+    if (spec.schemaKey) {
+      const schemaNode = store.nodes.list().find((node) => node.parentNodeId === appNode!.id && node.name === spec.schemaKey);
+      if (!schemaNode) return undefined;
+      return store.list().find((entry) => entry.nodeId === schemaNode.id && entry.name === "data");
+    }
+    return store.list().find((entry) => entry.nodeId === appNode!.id && entry.name === spec.key);
+  };
   const willOpenMain = async (spec: NormalizedBotSpec) => {
     const bot = resolveMainBot(spec);
     if (!bot) return true;
