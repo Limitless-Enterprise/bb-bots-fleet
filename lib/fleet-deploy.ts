@@ -10,7 +10,7 @@ import { assertFleetProjectAllowed } from "./fleet-project-guard";
 import { assertAppNodeNameAvailable, newNodeId, resolveNodePath, validateFoldedIntoAddress, validateSchemaNodeMetadata, type BotNodeMetadata } from "./bot-nodes";
 import { botAddress, resolveBotSelector, resolveMachine, resolveProject } from "./fleet-resolve";
 import { loadManifestFile, readManifestSoul, topologicalBotOrder, type NormalizedBotSpec } from "./manifest";
-import { runMainCommand } from "./fleet-main";
+import { assertDeployMainCanOpen, runMainCommand } from "./fleet-main";
 
 const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
 const avatar = () => avatarSchema.parse({ color: "#168b75", shape: "round", expression: "curious", motion: "still" });
@@ -72,6 +72,17 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     report.push({ action: "node", target: manifest.appName, status: dryRun ? "skipped" : "updated" });
   }
 
+  const releaseManifestOwnerUnless = async (botId: string | null) => {
+    if (dryRun) return;
+    const current = store.projectOwner(project.id);
+    if (current && current.botId !== botId) await ops.updateProjectRole(current.botId, "release", project.id);
+  };
+  const reconcileManifestOwner = async (botId: string) => {
+    if (dryRun) return;
+    await releaseManifestOwnerUnless(botId);
+    if (store.projectOwner(project.id)?.botId !== botId) await ops.updateProjectRole(botId, "own", project.id);
+  };
+
   const upsert = async (spec: NormalizedBotSpec, nodeId: string) => {
     const soul = readManifestSoul(manifest.baseDir, spec.soulPath);
     const parentId = spec.parentKey ? store.list().find((bot) => bot.nodeId === appNode!.id && bot.name === spec.parentKey)?.id ?? null : null;
@@ -79,13 +90,19 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     const address = existing ? botAddress(store.nodes.list(), existing) : `${manifest.appName}/${spec.key}`;
     if (!existing) {
       if (!dryRun) {
+        if (spec.projectRole === "owner") await releaseManifestOwnerUnless(null);
         await ops.createBot({ name: spec.key, role: spec.role, hostId: machine.id, avatar: avatar(), sectionId, linkedProjectIds: [project.id], ownedProjectIds: spec.projectRole === "owner" ? [project.id] : undefined, soul, nodeId, parentBotId: parentId, ...(spec.launch ? { launchPreset: spec.launch } : {}) });
+        if (spec.projectRole === "owner") {
+          const created = store.list().find((bot) => bot.nodeId === nodeId && bot.name === spec.key);
+          if (created) await reconcileManifestOwner(created.id);
+        }
       }
       report.push({ action: "bot", target: address, status: dryRun ? "skipped" : "created" });
       return;
     }
-    const patch: Partial<{ role: string; soul: string; launchPreset: BotMetadata["launchPreset"]; parentBotId: string | null }> = {};
+    const patch: Partial<{ role: string; soul: string; hostId: string; launchPreset: BotMetadata["launchPreset"]; parentBotId: string | null }> = {};
     if (existing.role !== spec.role) patch.role = spec.role;
+    if (existing.hostId !== machine.id) patch.hostId = machine.id;
     if (sha256(soul) !== sha256(existing.soul)) patch.soul = soul;
     if (spec.launch) {
       if (JSON.stringify(existing.launchPreset) !== JSON.stringify(spec.launch)) patch.launchPreset = spec.launch;
@@ -98,8 +115,40 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     }
     if (Object.keys(patch).length && !dryRun) await ops.updateBot(existing.id, patch);
     report.push({ action: "bot", target: address, status: Object.keys(patch).length || joinedProject ? dryRun ? "skipped" : "updated" : "unchanged" });
-    if (spec.projectRole === "owner" && !store.projectOwner(project.id) && !dryRun) await ops.updateProjectRole(existing.id, "own", project.id);
+    if (spec.projectRole === "owner" && !dryRun) await reconcileManifestOwner(existing.id);
   };
+
+  const mainSpecs = [...manifest.bots, ...manifest.schemas.map((s) => s.data).filter(Boolean) as NormalizedBotSpec[]].filter((s) => s.main);
+  const resolveMainBot = (spec: NormalizedBotSpec) => spec.schemaKey
+    ? store.list().find((entry) => entry.nodeId === resolveNodePath(store.nodes.list(), `${manifest.appName}/${spec.schemaKey}`).id && entry.name === "data")
+    : store.list().find((entry) => entry.nodeId === appNode!.id && entry.name === spec.key);
+  const mainTarget = (spec: NormalizedBotSpec) => spec.schemaKey ? `${manifest.appName}/${spec.schemaKey}/data` : `${manifest.appName}/${spec.key}`;
+  const willOpenMain = async (spec: NormalizedBotSpec) => {
+    const bot = resolveMainBot(spec);
+    if (!bot) return true;
+    if (!bot.mainThreadId) return true;
+    try {
+      const existing = await bb.sdk.threads.get({ threadId: bot.mainThreadId });
+      return Boolean(existing.archivedAt);
+    } catch {
+      return true;
+    }
+  };
+  if (!dryRun) {
+    for (const spec of mainSpecs) {
+      if (await willOpenMain(spec)) {
+        const bot = resolveMainBot(spec);
+        await assertDeployMainCanOpen(bb, project.id, mainTarget(spec), spec.launch, bot?.launchPreset ?? null);
+      }
+    }
+  }
+
+  for (const spec of topologicalBotOrder(manifest.bots)) await upsert(spec, appNode!.id);
+  if (!dryRun) {
+    for (const schema of manifest.schemas) {
+      if (schema.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, schema.foldedInto);
+    }
+  }
 
   const schemaUpserts: Array<{ spec: NormalizedBotSpec; nodeId: string }> = [];
   for (const schema of manifest.schemas) {
@@ -120,12 +169,15 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
         schemaNode = { ...schemaNode, metadata: nextMetadata };
         if (!dryRun) store.nodes.save(schemaNode);
       }
+      if (schema.foldedInto && !dryRun) {
+        const orphan = store.list().find((bot) => bot.nodeId === schemaNode!.id && bot.name === "data");
+        if (orphan) {
+          store.removeRegistryBot(orphan.id);
+          report.push({ action: "bot", target: `${manifest.appName}/${schema.key}/data`, status: "removed" });
+        }
+      }
     }
     if (schema.data && schemaNode) schemaUpserts.push({ spec: schema.data, nodeId: schemaNode.id });
-  }
-  for (const spec of topologicalBotOrder(manifest.bots)) await upsert(spec, appNode!.id);
-  for (const schema of manifest.schemas) {
-    if (schema.foldedInto && !dryRun) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, schema.foldedInto);
   }
   for (const { spec, nodeId } of schemaUpserts) await upsert(spec, nodeId);
   for (const specialist of manifest.specialists) {
@@ -134,30 +186,21 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   }
   let exitCode = 0;
   if (!dryRun) {
-    for (const spec of [...manifest.bots, ...manifest.schemas.map((s) => s.data).filter(Boolean) as NormalizedBotSpec[]].filter((s) => s.main)) {
-      const bot = spec.schemaKey
-        ? store.list().find((entry) => entry.nodeId === resolveNodePath(store.nodes.list(), `${manifest.appName}/${spec.schemaKey}`).id && entry.name === "data")
-        : store.list().find((entry) => entry.nodeId === appNode!.id && entry.name === spec.key);
-      if (bot) {
-        const address = botAddress(store.nodes.list(), bot);
-        let openMain = !bot.mainThreadId;
-        if (!openMain && bot.mainThreadId) {
-          try {
-            const existing = await bb.sdk.threads.get({ threadId: bot.mainThreadId });
-            openMain = Boolean(existing.archivedAt);
-          } catch {
-            openMain = true;
-          }
+    for (const spec of mainSpecs) {
+      const bot = resolveMainBot(spec);
+      if (!bot) continue;
+      const address = botAddress(store.nodes.list(), bot);
+      const openMain = await willOpenMain(spec);
+      if (openMain) {
+        try {
+          await runMainCommand([address, "--project", project.id], ctx, bb, store, ops, personalProjectId, caller);
+          report.push({ action: "main", target: address, status: "opened" });
+        } catch (error) {
+          exitCode = 1;
+          report.push({ action: "main", target: address, status: error instanceof Error ? `failed: ${error.message}` : "failed" });
         }
-        if (openMain) {
-          try {
-            await runMainCommand([address, "--project", project.id], ctx, bb, store, ops, personalProjectId, caller);
-            report.push({ action: "main", target: address, status: "opened" });
-          } catch (error) {
-            exitCode = 1;
-            report.push({ action: "main", target: address, status: error instanceof Error ? `failed: ${error.message}` : "failed" });
-          }
-        }
+      } else {
+        report.push({ action: "main", target: address, status: "unchanged" });
       }
     }
   }
