@@ -129,6 +129,8 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     }
     return store.list().find((entry) => entry.nodeId === appNode!.id && entry.name === spec.key);
   };
+  const mainTargetAddress = (spec: NormalizedBotSpec) =>
+    spec.schemaKey ? `${manifest.appName}/${spec.schemaKey}/data` : `${manifest.appName}/${spec.key}`;
   const willOpenMain = async (spec: NormalizedBotSpec) => {
     const bot = resolveMainBot(spec);
     if (!bot) return true;
@@ -157,7 +159,7 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
       });
       continue;
     }
-    if (schema.foldedInto && !dryRun) {
+    if (schema.foldedInto) {
       try {
         validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, schema.foldedInto);
       } catch (error) {
@@ -203,8 +205,12 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   if (!dryRun) {
     for (const spec of mainSpecs) {
       const bot = resolveMainBot(spec);
-      if (!bot) continue;
-      const address = botAddress(store.nodes.list(), bot);
+      const address = bot ? botAddress(store.nodes.list(), bot) : mainTargetAddress(spec);
+      if (!bot) {
+        exitCode = 1;
+        report.push({ action: "main", target: address, status: "failed: main bot not found" });
+        continue;
+      }
       const openMain = await willOpenMain(spec);
       if (openMain) {
         try {
