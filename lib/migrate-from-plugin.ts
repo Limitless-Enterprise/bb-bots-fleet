@@ -26,6 +26,11 @@ function copyTable(legacy: Database.Database, target: Database.Database, table: 
   for (const row of rows) insert.run(...columns.map((column) => row[column]));
 }
 
+export function stateCopyFailureMessage(stateStaging: string, cause: unknown) {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return `Failed to copy bot state from staged path ${stateStaging}: ${detail}`;
+}
+
 function snapshotSourceDatabase(sourceDbPath: string, scratchDb: string) {
   copyFileSync(sourceDbPath, scratchDb);
   for (const suffix of ["-wal", "-shm"] as const) {
@@ -76,7 +81,11 @@ export async function migrateFromPlugin(bb: BbPluginApi, store: BotStore, source
     }).immediate();
     if (existsSync(stateStaging)) {
       mkdirSync(join(targetDir, "state"), { recursive: true, mode: 0o700 });
-      cpSync(stateStaging, join(targetDir, "state"), { recursive: true, force: true });
+      try {
+        cpSync(stateStaging, join(targetDir, "state"), { recursive: true, force: true });
+      } catch (error) {
+        throw new Error(stateCopyFailureMessage(stateStaging, error));
+      }
     }
     const copiedStateBots = existsSync(stateStaging) ? summary.botCount : 0;
     return { sourcePluginId, botCount: summary.botCount, bindingCount: summary.bindingCount, copiedStateBots };

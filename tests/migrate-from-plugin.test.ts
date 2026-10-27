@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, expect, it } from "vitest";
+import { migrateFromPlugin, stateCopyFailureMessage } from "../lib/migrate-from-plugin";
 import { createFakePluginHost, makeMessageDispatchHookContext, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import type { BotMetadata } from "../contract";
 import { createBotStore } from "../lib/bot-store";
@@ -224,6 +225,25 @@ it("does not copy sidebar state when database import fails", async () => {
   const fleetState = join(dataDir, "plugins", "bots-fleet", "state", "bot_sidebar", "SOUL.md");
   expect(existsSync(fleetState)).toBe(false);
   expect(createBotStore(host.bb).state(PLUGIN_MIGRATION_STATE_KEY)).toBeNull();
+});
+
+it("names the staged state path when post-commit state copy fails", async () => {
+  const stateStaging = join("/tmp", "bots-fleet-migrate-abc", "state-staging");
+  expect(stateCopyFailureMessage(stateStaging, new Error("disk full"))).toBe(
+    `Failed to copy bot state from staged path ${stateStaging}: disk full`,
+  );
+  const dataDir = mkdtempSync(join(tmpdir(), "bots-migrate-copy-"));
+  cleanups.push(() => rmSync(dataDir, { recursive: true, force: true }));
+  const sidebarDir = join(dataDir, "plugins", "bots-sidebar");
+  mkdirSync(sidebarDir, { recursive: true });
+  seedSidebarDatabase(sidebarDir);
+  const host = createFakePluginHost({
+    pluginId: "bots-fleet",
+    dataDir,
+    sdk: { plugins: { list: async () => ({ plugins: [{ id: "bots-sidebar", enabled: false }] }) } },
+  });
+  cleanups.push(() => host.harness.lifecycle.dispose());
+  await expect(migrateFromPlugin(host.bb, createBotStore(host.bb), "bots-sidebar")).resolves.toMatchObject({ botCount: 1 });
 });
 
 it("finishes pending starts and routes threads created under bots-sidebar origin", async () => {

@@ -28,6 +28,7 @@ async function mount() {
       bot_prepare: () => bots[0],
       section_update: () => sections[0],
       section_create: () => { const section = { id: "new", name: "New section", order: 2 }; sections.push(section); return section; },
+      section_delete: () => ({ ok: true }),
     },
   });
   await slot.findByText("Bot one");
@@ -108,6 +109,15 @@ it.each(["reorder", "section"])("restores drag-to-%s without arrow controls", as
     { botId: "one", sectionId: "first" }, { botId: "three", sectionId: "second" }, { botId: "two", sectionId: "second" },
   ];
   await waitFor(() => expect(slot.inspection.rpcCalls).toContainEqual({ method: "bots_reorder", input: { bots: placements } }));
+});
+
+it("deletes sections through a confirmation dialog", async () => {
+  const slot = await mount();
+  fireEvent.contextMenu(slot.getByText("First"));
+  fireEvent.click(await slot.findByRole("menuitem", { name: "Delete section" }));
+  const dialog = await slot.findByRole("dialog", { name: /Delete “First”/ });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Delete section" }));
+  await waitFor(() => expect(slot.inspection.rpcCalls).toContainEqual({ method: "section_delete", input: { sectionId: "first" } }));
 });
 
 it("renames sections through the section context menu", async () => {
