@@ -59,17 +59,21 @@ describe("Bots sidebar", () => {
     expect(slot.container.querySelectorAll("[data-sidebar-thread-id]")).toHaveLength(11);
     expect(slot.inspection.navigateCalls).toEqual([]);
   });
+  it("does not render a Chats pane in the sidebar", async () => {
+    const { slot } = await mount(true);
+    expect(slot.queryByRole("button", { name: "Chats" })).toBeNull();
+    expect(slot.queryByRole("separator", { name: "Resize Chats" })).toBeNull();
+    expect(slot.queryByText("Conversation chat")).toBeNull();
+  });
   it.each([
     { indicator: "runtime" as const, label: "Working" },
     { indicator: "none" as const, label: "Done" },
-  ])("shows $label icons on both bot conversations and Chats", async ({ indicator, label }) => {
-    const { slot } = await mount(true, { indicator });
-    for (const id of ["0", "chat"]) {
-      const row = slot.container.querySelector<HTMLElement>(`[data-sidebar-thread-id="${id}"]`)!;
-      expect(within(row).getByRole("img", { name: label })).toBeTruthy();
-      expect(row.querySelectorAll(".conversation-status")).toHaveLength(1);
-      expect(row.querySelector(".thread-indicator, .thread-branch")).toBeNull();
-    }
+  ])("shows $label icons on bot conversations", async ({ indicator, label }) => {
+    const { slot } = await mount(false, { indicator });
+    const row = slot.container.querySelector<HTMLElement>('[data-sidebar-thread-id="0"]')!;
+    expect(within(row).getByRole("img", { name: label })).toBeTruthy();
+    expect(row.querySelectorAll(".conversation-status")).toHaveLength(1);
+    expect(row.querySelector(".thread-indicator, .thread-branch")).toBeNull();
   });
   it("archives a conversation through the host, not a private RPC", async () => {
     const { slot } = await mount();
@@ -77,36 +81,18 @@ describe("Bots sidebar", () => {
     fireEvent.click(await slot.findByRole("menuitem", { name: "Archive conversation" }));
     expect(slot.nativeActionCalls).toContainEqual({ key: "bb--core/archive", threadId: "0" });
   });
-  it("gives Chats assignment and conversation actions without main/worktree actions", async () => {
-    const { slot } = await mount(true);
-    fireEvent.contextMenu(slot.getByText("Conversation chat"));
-    const menu = await slot.findByRole("menu");
-    expect(Array.from(menu.querySelectorAll('[role="menuitem"]'), (item) => item.textContent)).toEqual(["Rename…", "Open in split", "Mark as unread", "Archive conversation", "Assign to bot…"]);
-    fireEvent.click(slot.getByRole("menuitem", { name: "Archive conversation" }));
-    expect(slot.nativeActionCalls).toContainEqual({ key: "bb--core/archive", threadId: "chat" });
-  });
-  it.each(["0", "chat"])("renames %s only on explicit Save", async (id) => {
-    const { slot } = await mount(true);
-    fireEvent.contextMenu(slot.getByText(`Conversation ${id}`));
+  it("renames a bot conversation only on explicit Save", async () => {
+    const { slot } = await mount(false);
+    fireEvent.contextMenu(slot.getByText("Conversation 0"));
     fireEvent.click(await slot.findByRole("menuitem", { name: "Rename…" }));
     const input = await slot.findByRole("textbox", { name: "Name" });
-    expect((input as HTMLInputElement).value).toBe(`Conversation ${id}`);
+    expect((input as HTMLInputElement).value).toBe("Conversation 0");
     fireEvent.change(input, { target: { value: "  New name  " } });
     expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false);
     expect(slot.inspection.navigateCalls).toEqual([]);
     fireEvent.click(slot.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
-    expect(slot.inspection.sdkCalls).toContainEqual({ method: "threads.update", args: [{ threadId: id, title: "New name" }] });
-  });
-  it.each([
-    { label: "Mark as unread", expected: { key: "bb--core/mark-unread", threadId: "chat" } },
-    { label: "Open in split", expected: { key: "bb--core/open-in-split", threadId: "chat" } },
-  ])("runs the Chats action: $label", async ({ label, expected }) => {
-    const { slot, onNavigate } = await mount(true);
-    fireEvent.contextMenu(slot.getByText("Conversation chat"));
-    fireEvent.click(await slot.findByRole("menuitem", { name: label }));
-    expect(slot.nativeActionCalls).toContainEqual(expected);
-    expect(onNavigate).not.toHaveBeenCalled(); // Navigation belongs to the host action.
+    expect(slot.inspection.sdkCalls).toContainEqual({ method: "threads.update", args: [{ threadId: "0", title: "New name" }] });
   });
   it("offers Move to top instead of Make main", async () => {
     const { slot } = await mount();

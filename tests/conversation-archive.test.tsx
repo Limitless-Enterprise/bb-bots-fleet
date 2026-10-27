@@ -23,8 +23,8 @@ async function mount(personal: boolean) {
   return { slot, onNavigate };
 }
 
-it.each([false, true])("requests native archive without prematurely hiding rows before confirmation (Chats=%s)", async (personal) => {
-  const { slot, onNavigate } = await mount(personal);
+it("requests native archive without prematurely hiding rows before confirmation", async () => {
+  const { slot, onNavigate } = await mount(false);
   const link = slot.container.querySelector('[data-sidebar-thread-id="root"]')!;
   const row = link.parentElement!;
   const archive = within(row).getByRole("button", { name: "Archive Conversation root" });
@@ -38,8 +38,8 @@ it.each([false, true])("requests native archive without prematurely hiding rows 
   expect(slot.inspection.rpcCalls.map(call => call.method)).toEqual(["bots_list"]);
 });
 
-it.each([false, true])("gives each expanded child its own archive action (Chats=%s)", async (personal) => {
-  const { slot } = await mount(personal);
+it("gives each expanded child its own archive action", async () => {
+  const { slot } = await mount(false);
   fireEvent.click(slot.getByRole("button", { name: "Expand children of Conversation root" }));
   fireEvent.click(slot.getByRole("button", { name: "Archive Conversation child" }));
   expect(slot.nativeActionCalls).toEqual([{ key: "bb--core/archive", threadId: "child" }]);
@@ -47,10 +47,8 @@ it.each([false, true])("gives each expanded child its own archive action (Chats=
   expect(slot.queryByRole("button", { name: /children of Conversation root/ })).not.toBeNull();
 });
 
-it.each([false, true])("supports archiving overflow rows without opening a conversation (Chats=%s)", async (personal) => {
-  const { slot, onNavigate } = await mount(personal);
-  if (personal) expect(slot.queryByRole("button", { name: "Archive Older conversation" })).toBeNull();
-  if (personal) fireEvent.click(slot.getByRole("button", { name: /^\d+ Other$/ }));
+it("supports archiving overflow bot rows without opening a conversation", async () => {
+  const { slot, onNavigate } = await mount(false);
   const archive = slot.getByRole("button", { name: "Archive Older conversation" });
   expect(archive.getAttribute("data-archive-thread-id")).toBe("old-leaf");
   fireEvent.keyDown(archive, { key: "Enter" }); fireEvent.click(archive, { detail: 0 });

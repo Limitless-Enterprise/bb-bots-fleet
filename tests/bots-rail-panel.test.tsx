@@ -10,6 +10,10 @@ const app = await loadPluginApp(() => import("../app"));
 afterEach(cleanup);
 
 describe("bots rail panel registration", () => {
+  it("registers assign-to-bot thread action", () => {
+    expect(app.threadActions.some((entry) => entry.id === "assign-to-bot")).toBe(true);
+  });
+
   it("registers navPanel with sidebar and badge hook", () => {
     expect(app.threadLists).toHaveLength(0);
     const panel = botsNavPanel(app);
@@ -91,7 +95,7 @@ describe("bots page", () => {
       },
     });
     expect(slot.getByRole("button", { name: "Create bot" })).toBeTruthy();
-    expect(slot.getByRole("button", { name: "New chat" })).toBeTruthy();
+    expect(slot.queryByRole("button", { name: "New chat" })).toBeNull();
   });
 
   it("renders Open in BB for a thread subpath", async () => {

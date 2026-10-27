@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { DragEvent, PointerEvent as ReactPointerEvent, ReactElement } from "react";
 import { createPortal } from "react-dom";
-import { toast } from "sonner";
-import { useConversationDrop } from "./hooks/use-conversation-drop";
 import { useConversationReorder } from "./hooks/use-conversation-reorder";
+import { registerAssignToBotThreadAction } from "./lib/assign-to-bot-thread-action";
 import { threadActionTarget } from "./lib/thread-action-target";
 import {
   definePluginApp,
@@ -28,7 +27,7 @@ import type {
 import { botsThreadIdFromSubPath, openBotsThread, registerBotsCreateBotHandler, requestBotsCreateBot } from "./lib/bots-panel";
 import { useBotsNavBadge } from "./lib/bots-nav-badge";
 import type { BotAvatar, BotMetadata, BotSection, ProjectOwner, rpcContract } from "./contract";
-import { orderedBotConversationTree, conversationOwners, conversationTree } from "./lib/conversations";
+import { orderedBotConversationTree, conversationOwners } from "./lib/conversations";
 import { BotPrivateMemoryPanel } from "./components/bot-private-memory-panel";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,10 +45,8 @@ import { BotActivityBadge } from "@/components/bot-activity-badge";
 import { ConversationArchiveButton } from "@/components/conversation-archive-button";
 import { BotNewConversationButton } from "@/components/bot-new-conversation-button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ResizableChats } from "@/components/resizable-chats";
 import { ConversationDialog } from "@/components/conversation-dialog";
 import type { ConversationTarget } from "@/components/conversation-dialog";
-import { AssignConversationDialog } from "@/components/assign-conversation-dialog";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
@@ -537,79 +534,11 @@ function BotGroup({
   );
 }
 
-function RecentRow({
-  thread,
-  childrenByParent,
-  activePath,
-  navigate,
-  activeThreadId,
-  onNavigate,
-  onAssign,
-  onConversationDrag,
-  draggingThreadId,
-}: {
-  thread: PluginSidebarThread;
-  childrenByParent: Map<string, PluginSidebarThread[]>;
-  activePath: Set<string>;
-  navigate: BbNavigate;
-  activeThreadId: string | null;
-  onNavigate: () => void;
-  onAssign: (thread: PluginSidebarThread) => void;
-  onConversationDrag: (thread: PluginSidebarThread, event: ReactPointerEvent<HTMLElement>) => void;
-  draggingThreadId: string | null;
-}) {
-  const split = experimental_useSidebarThreadSplit(thread.id);
-  const shortcut = useSidebarThreadShortcut(thread.id);
-  const children = childrenByParent.get(thread.id) ?? [];
-  const branch = useConversationBranch(thread.id, activeThreadId, activePath);
-  const title = thread.displayTitle ?? thread.title ?? thread.titleFallback ?? "Untitled conversation";
-  const detail = thread.environment?.branchName ?? thread.host?.name ?? "Personal conversation";
-  return (
-    <li>
-      <ConversationContextMenu thread={thread} dragging={draggingThreadId === thread.id} items={[{ label: "Assign to bot…", action: () => onAssign(thread) }]}>
-      <div className="recent-row flex min-h-6 items-center rounded-md px-1 hover:bg-state-hover" data-conversation-dragging={draggingThreadId === thread.id} aria-current={activeThreadId === thread.id ? "page" : undefined} data-active-descendant={!branch.expanded && branch.containsActive}>
-      <a
-        href={thread.href}
-        {...split.splitProps}
-        onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); onConversationDrag(thread, event); }}
-        ref={branch.rowRef}
-        role="link"
-        tabIndex={0}
-        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); openBotsThread(navigate, thread.id, event); onNavigate(); } }}
-        data-sidebar-thread-shortcut-target=""
-        data-sidebar-thread-id={thread.id} aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-0.5"
-        aria-current={activeThreadId === thread.id ? "page" : undefined}
-        onClick={(event) => {
-          event.preventDefault();
-          openBotsThread(navigate, thread.id, event);
-          onNavigate();
-        }}
-      >
-        <span className="flex size-5 shrink-0 items-center justify-center">
-          <SidebarConversationStatus thread={thread} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-baseline gap-2">
-            <span className="min-w-0 flex-1 truncate text-[10px] font-medium leading-3 text-foreground"><ThreadTitle threadId={thread.id} /></span>{shortcut ? <kbd className="shrink-0 rounded bg-muted px-1 text-[9px]">{shortcut.label}</kbd> : null}
-          </span>
-          <span className="block truncate text-[8px] leading-[10px] text-muted-foreground">{detail}</span>
-        </span>
-      </a>
-      <ConversationArchiveButton thread={thread} />
-      <BranchToggle title={title} count={children.length} expanded={branch.expanded} childrenId={branch.childrenId} onToggle={branch.toggle} />
-      </div>
-      </ConversationContextMenu>
-      {children.length ? <ul id={branch.childrenId} className="conversation-children" hidden={!branch.expanded}>{branch.expanded ? children.map((child) => <RecentRow key={child.id} thread={child} childrenByParent={childrenByParent} activePath={activePath} navigate={navigate} activeThreadId={activeThreadId} onNavigate={onNavigate} onAssign={onAssign} onConversationDrag={onConversationDrag} draggingThreadId={draggingThreadId} />) : null}</ul> : null}
-    </li>
-  );
-}
-
 function BotsPage({ subPath }: PluginNavPanelProps) {
   const threadId = botsThreadIdFromSubPath(subPath);
   const navigate = useBbNavigate();
   const sidebar = experimental_useSidebarThreads();
-  const { bots, threadBindings, personalProjectId } = useBotData();
+  const { bots, threadBindings } = useBotData();
   const owners = useMemo(() => conversationOwners(sidebar.threads, threadBindings), [sidebar.threads, threadBindings]);
   const botId = threadId ? owners.get(threadId) : undefined;
   const botName = botId ? bots.find((bot) => bot.id === botId)?.name : undefined;
@@ -625,18 +554,6 @@ function BotsPage({ subPath }: PluginNavPanelProps) {
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
           <Button size="sm" onClick={() => requestBotsCreateBot()}>Create bot</Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              navigate.toCompose({
-                ...(personalProjectId ? { projectId: personalProjectId } : {}),
-                focusPrompt: true,
-              });
-            }}
-          >
-            New chat
-          </Button>
         </div>
       </div>
     );
@@ -684,9 +601,6 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
   const [conversation, setConversation] = useState<ConversationTarget | null>(null);
   const { rpc, bots, hosts, sections, projects, threadBindings, warnings, personalProjectId, projectOwners, loaded, error, refresh } = useBotData();
   const [actionError, setActionError] = useState<string | null>(null);
-  const [assigning, setAssigning] = useState<PluginSidebarThread | null>(null);
-  const [showOtherChats, setShowOtherChats] = useState(false);
-  const chatsOtherId = useId();
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   useEffect(() => {
     registerBotsCreateBotHandler(() => setEditor({ kind: "create" }));
@@ -702,20 +616,8 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
   const [sectionName, setSectionName] = useState("");
   const [sectionPending, setSectionPending] = useState(false);
   const [editingSection, setEditingSection] = useState<BotSection | null>(null);
-  const [pendingSectionDelete, setPendingSectionDelete] = useState<BotSection | null>(null);
   const [shownTopicBots, setShownTopicBots] = useState<Set<string>>(() => new Set());
   const sidebarElement = useRef<HTMLDivElement>(null);
-  const [droppedConversation, setDroppedConversation] = useState<{ botId: string; threadId: string } | null>(null);
-  useEffect(() => {
-    if (!droppedConversation || !shownTopicBots.has(droppedConversation.botId)) return;
-    const botRow = Array.from(sidebarElement.current?.querySelectorAll<HTMLElement>("[data-bot-drop-target]") ?? [])
-      .find(row => row.dataset.botDropTarget === droppedConversation.botId);
-    const threadRow = Array.from(botRow?.closest(".project-group")?.querySelectorAll<HTMLElement>("[data-sidebar-thread-id]") ?? [])
-      .find(row => row.dataset.sidebarThreadId === droppedConversation.threadId);
-    if (!threadRow) return;
-    threadRow.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: "instant" });
-    setDroppedConversation(null);
-  }, [droppedConversation, shownTopicBots, threadBindings, sidebar.threads]);
   const [draggedBotId, setDraggedBotId] = useState<string | null>(null);
   const preparing = useRef(false);
   const projectCatalog = JSON.stringify(sidebar.projects.map(({ id, name, isPersonal }) => [id, name, isPersonal]));
@@ -727,23 +629,6 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
   }, [projectCatalog, refresh]);
   const wakeups = useRef(new Set<string>());
   const owners = useMemo(() => conversationOwners(sidebar.threads, threadBindings), [sidebar.threads, threadBindings]);
-  const assignmentRequests = useRef(new Set<string>());
-  const conversationDrop = useConversationDrop((thread, value) => {
-    const { botId, placeFirst } = JSON.parse(value) as { botId: string; placeFirst: boolean };
-    run(async () => {
-      await assignConversation(thread, botId, placeFirst);
-      toast.success(`Conversation assigned to ${bots.find(bot => bot.id === botId)?.name ?? "bot"}`, {
-        action: { label: "View", onClick: () => { openBotsThread(navigate, thread.id); onNavigate(); } },
-      });
-    });
-  }, (botId) => bots.some(bot => bot.id === botId), (_thread, element, _x, _y, shiftKey) => {
-    const row = element.closest<HTMLElement>("[data-bot-drop-target]");
-    const botId = row?.dataset.botDropTarget;
-    if (!botId || !bots.some(bot => bot.id === botId)) return null;
-    return JSON.stringify({ botId, placeFirst: shiftKey || Boolean(element.closest("[data-bot-drop-first]")) });
-  });
-  const outsideDropTarget = conversationDrop.drag?.botId
-    ? JSON.parse(conversationDrop.drag.botId) as { botId: string; placeFirst: boolean } : null;
   const selectedBotId = activeThreadId ? owners.get(activeThreadId) : undefined;
   const threadsByBot = useMemo(() => {
     const result = new Map<string, PluginSidebarThread[]>();
@@ -771,22 +656,6 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
 
   function firstConversation(bot: BotMetadata) {
     return orderedBotConversationTree((threadsByBot.get(bot.id) ?? []), bot.threadOrder).roots[0];
-  }
-
-  async function assignConversation(thread: PluginSidebarThread, botId: string, placeFirst?: boolean) {
-    if (owners.has(thread.id)) throw new Error("This conversation has already been assigned. Refresh and try again.");
-    if (assignmentRequests.current.has(thread.id)) throw new Error("This conversation is already being assigned.");
-    assignmentRequests.current.add(thread.id);
-    try {
-      await rpc.call("conversation_assign", { botId, threadId: thread.id, ...(placeFirst !== undefined ? { placeFirst } : {}) });
-      if (placeFirst !== undefined) {
-        // Reveal as soon as assignment succeeds, even if refreshing the list is slow.
-        setShownTopicBots(current => new Set([...current, botId]));
-        setDroppedConversation({ botId, threadId: thread.id });
-      }
-      await refresh();
-    }
-    finally { assignmentRequests.current.delete(thread.id); }
   }
 
   async function moveBot(botId: string, sectionId: string | null, beforeBotId: string | null) {
@@ -894,14 +763,9 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
     else await openBotConversation(bot);
   }
 
-  const chatsTree = useMemo(() => conversationTree(
-    sidebar.threads.filter((thread) => !owners.has(thread.id)),
-    null, activeThreadId, 8,
-  ), [sidebar.threads, owners, activeThreadId]);
-  const renderChat = (thread: PluginSidebarThread) => <RecentRow key={thread.id} thread={thread} childrenByParent={chatsTree.childrenByParent} activePath={chatsTree.activePath} navigate={navigate} activeThreadId={activeThreadId} onNavigate={onNavigate} onAssign={setAssigning} onConversationDrag={(row, event) => { if (!owners.has(row.id) && !assignmentRequests.current.has(row.id)) conversationDrop.begin(row, event); }} draggingThreadId={conversationDrop.drag?.threadId ?? null} />;
   return (
     <TooltipProvider>
-    <div ref={sidebarElement} className="bots-sidebar flex h-full min-h-0 flex-col overflow-hidden px-1.5 pb-1.5" data-conversation-dragging={Boolean(conversationDrop.drag)}>
+    <div ref={sidebarElement} className="bots-sidebar flex h-full min-h-0 flex-col overflow-hidden px-1.5 pb-1.5">
       <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
         {sidebar.status === "loading" || !loaded ? <p className="px-2 py-4 text-sm text-muted-foreground">Loading bots…</p> : null}
         {sidebar.status === "error" || error || actionError ? <p role="alert" className="px-2 py-3 text-xs text-destructive">{actionError ?? error ?? "Could not load the sidebar."}</p> : null}
@@ -921,7 +785,7 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
               { label: "New section…", action: () => setAddingSection(true) },
               ...(section.id ? [
                 { label: "Rename section…", action: () => setEditingSection(sections.find((entry) => entry.id === section.id) ?? null) },
-                { label: "Delete section", action: () => setPendingSectionDelete(sections.find((entry) => entry.id === section.id) ?? null) },
+                { label: "Delete section", action: () => { if (window.confirm(`Delete “${section.name}”? Its bots will move to Main.`)) void rpc.call("section_delete", { sectionId: section.id! }).then(refresh); } },
               ] : []),
             ]}><div className="px-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground" tabIndex={0}>{section.name}</div></RowContextMenu> : null}
             {section.id === null && section.bots.length === 0 && draggedBotId ? <div className="rounded border border-dashed border-border px-2 py-2 text-[10px] text-muted-foreground">Move to Main</div> : null}
@@ -947,7 +811,7 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
                 onNewInWorktree={(thread) => openLinked(metadata, "worktree", thread)}
                 onFork={(thread) => openFork(metadata, thread)} onNest={nestConversation}
                 onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", botId); setDraggedBotId(botId); }}
-                onDragEnd={() => setDraggedBotId(null)} dragging={draggedBotId === botId} conversationDropTarget={outsideDropTarget?.botId === botId ? outsideDropTarget.placeFirst ? "first" : "last" : null} onNavigate={onNavigate} /></div>;
+                onDragEnd={() => setDraggedBotId(null)} dragging={draggedBotId === botId} conversationDropTarget={null} onNavigate={onNavigate} /></div>;
             })}</div>
           </section>)}
         </div>
@@ -961,36 +825,8 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
           <button type="button" className="h-5 rounded px-1.5 text-[9px] text-muted-foreground hover:bg-state-hover" aria-pressed={showHidden} onClick={() => setShowHidden((current) => !current)}>{hiddenBots.length} hidden</button>
         </div> : null}
       </div>
-      <ResizableChats activeChatId={activeThreadId && !owners.has(activeThreadId) ? activeThreadId : null} onNewChat={() => {
-        navigate.toCompose({ ...(personalProjectId ? { projectId: personalProjectId } : {}), focusPrompt: true });
-        onNavigate();
-      }}>
-        <ul>
-          {chatsTree.recent.map(renderChat)}
-          {chatsTree.other.length ? <li><button type="button" className="flex min-h-7 w-full items-center gap-1 rounded-md px-1 text-left text-[10px] text-muted-foreground hover:bg-state-hover" aria-expanded={showOtherChats} aria-controls={chatsOtherId} onClick={() => setShowOtherChats((current) => !current)}><span className={showOtherChats ? "rotate-90" : ""}><TinyIcon name="chevron" /></span>{chatsTree.other.length} Other</button><ul id={chatsOtherId} hidden={!showOtherChats}>{showOtherChats ? chatsTree.other.map(renderChat) : null}</ul></li> : null}
-        </ul>
-      </ResizableChats>
-      {pendingSectionDelete ? <Dialog open onOpenChange={(open) => { if (!open) setPendingSectionDelete(null); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete “{pendingSectionDelete.name}”?</DialogTitle>
-            <DialogDescription>Its bots will move to Main.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setPendingSectionDelete(null)}>Cancel</Button>
-            <Button type="button" variant="destructive" onClick={() => {
-              const sectionId = pendingSectionDelete.id;
-              setPendingSectionDelete(null);
-              void rpc.call("section_delete", { sectionId }).then(refresh);
-            }}>Delete section</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog> : null}
       {editingSection ? <RenameConversationDialog title={editingSection.name} heading="Rename section" description="Choose the section name shown in the sidebar." onClose={() => setEditingSection(null)} onSave={async (name) => {
         await rpc.call("section_update", { sectionId: editingSection.id, name }); refresh();
-      }} /> : null}
-      {assigning ? <AssignConversationDialog bots={bots} title={assigning.title ?? assigning.titleFallback ?? "Untitled conversation"} onClose={() => setAssigning(null)} onAssign={async (botId) => {
-        await assignConversation(assigning, botId);
       }} /> : null}
       {conversation ? <ConversationDialog target={conversation} onClose={() => setConversation(null)} onCreate={async (request) => {
         const bot = bots.find((bot) => bot.id === conversation.bot.id);
@@ -1034,12 +870,12 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
         />
       ) : null}
     </div>
-    {conversationDrop.drag ? createPortal(<div {...portalScope} ref={conversationDrop.ghostRef} className="conversation-drag-ghost rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md" aria-hidden="true"><div className="truncate">{conversationDrop.drag.title}</div><div className="text-[10px] text-muted-foreground">{outsideDropTarget?.placeFirst ? "Drop to make top conversation" : "Drop to add at end · Face or Shift for top"}</div></div>, document.body) : null}
     </TooltipProvider>
   );
 }
 
 export default definePluginApp((app) => {
+  registerAssignToBotThreadAction(app);
   app.slots.navPanel({
     id: "bots",
     title: "Bots",
