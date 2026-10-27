@@ -8,21 +8,8 @@ import { projectLaunchEnvironment, worktreeLaunchEnvironment } from "./worktree-
 import { resolveBotSelector, resolveProject } from "./fleet-resolve";
 import { parseLaunchPresetFromFlags } from "./fleet-launch-flags";
 import { assertFleetRegistryOperator } from "./fleet-authz";
-import type { LaunchPreset } from "./launch-preset";
 
 type FlagMap = Record<string, string | boolean>;
-
-export async function assertDeployMainCanOpen(bb: BbPluginApi, projectId: string, target: string, launch: LaunchPreset | null | undefined, existingLaunch: LaunchPreset | null | undefined) {
-  const preset = launch ?? existingLaunch ?? null;
-  let providerId = preset?.execution?.providerId;
-  let model = preset?.execution?.model;
-  if (!providerId || !model) {
-    const defaults = await bb.sdk.projects.defaultExecutionOptions({ projectId });
-    providerId = providerId ?? defaults?.providerId;
-    model = model ?? defaults?.model;
-  }
-  if (!providerId || !model) throw new Error(`Main bot ${target} requires project execution defaults or a launch preset with provider and model`);
-}
 
 export async function runMainCommand(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps, personalProjectId: () => Promise<string>, caller: BotMetadata | null) {
   assertFleetRegistryOperator(ctx, caller);

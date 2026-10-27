@@ -10,7 +10,7 @@ import { assertFleetProjectAllowed } from "./fleet-project-guard";
 import { assertAppNodeNameAvailable, newNodeId, resolveNodePath, validateFoldedIntoAddress, validateSchemaNodeMetadata, type BotNodeMetadata } from "./bot-nodes";
 import { botAddress, resolveBotSelector, resolveMachine, resolveProject } from "./fleet-resolve";
 import { loadManifestFile, readManifestSoul, topologicalBotOrder, type NormalizedBotSpec } from "./manifest";
-import { assertDeployMainCanOpen, runMainCommand } from "./fleet-main";
+import { runMainCommand } from "./fleet-main";
 
 const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
 const avatar = () => avatarSchema.parse({ color: "#168b75", shape: "round", expression: "curious", motion: "still" });
@@ -53,11 +53,18 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   const report: Array<{ action: string; target: string; status: string }> = [];
   for (const specialist of manifest.specialists) resolveBotSelector(store, specialist);
 
+  let appNode = store.nodes.list().find((node) => node.kind === "app" && node.name === manifest.appName && !node.parentNodeId) ?? null;
+  if (!dryRun) {
+    const foldedApp = appNode ?? { id: "", kind: "app" as const, name: manifest.appName, parentNodeId: null, projectId: project.id, sectionId: null, metadata: {}, createdAt: 0 };
+    for (const schema of manifest.schemas) {
+      if (schema.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), foldedApp, schema.foldedInto);
+    }
+  }
+
   let sectionId = store.sections().find((section) => section.name === manifest.appName)?.id ?? null;
   if (!sectionId && !dryRun) sectionId = (await ops.createSection(manifest.appName)).id;
   report.push({ action: "section", target: manifest.appName, status: sectionId ? "unchanged" : dryRun ? "skipped" : "created" });
 
-  let appNode = store.nodes.list().find((node) => node.kind === "app" && node.name === manifest.appName && !node.parentNodeId) ?? null;
   if (!appNode) {
     assertAppNodeNameAvailable(store.nodes.list(), store.list(), manifest.appName);
     appNode = { id: newNodeId(), kind: "app", name: manifest.appName, parentNodeId: null, projectId: project.id, sectionId: null, metadata: {}, createdAt: Date.now() };
@@ -122,7 +129,6 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   const resolveMainBot = (spec: NormalizedBotSpec) => spec.schemaKey
     ? store.list().find((entry) => entry.nodeId === resolveNodePath(store.nodes.list(), `${manifest.appName}/${spec.schemaKey}`).id && entry.name === "data")
     : store.list().find((entry) => entry.nodeId === appNode!.id && entry.name === spec.key);
-  const mainTarget = (spec: NormalizedBotSpec) => spec.schemaKey ? `${manifest.appName}/${spec.schemaKey}/data` : `${manifest.appName}/${spec.key}`;
   const willOpenMain = async (spec: NormalizedBotSpec) => {
     const bot = resolveMainBot(spec);
     if (!bot) return true;
@@ -134,21 +140,7 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
       return true;
     }
   };
-  if (!dryRun) {
-    for (const spec of mainSpecs) {
-      if (await willOpenMain(spec)) {
-        const bot = resolveMainBot(spec);
-        await assertDeployMainCanOpen(bb, project.id, mainTarget(spec), spec.launch, bot?.launchPreset ?? null);
-      }
-    }
-  }
-
   for (const spec of topologicalBotOrder(manifest.bots)) await upsert(spec, appNode!.id);
-  if (!dryRun) {
-    for (const schema of manifest.schemas) {
-      if (schema.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, schema.foldedInto);
-    }
-  }
 
   const schemaUpserts: Array<{ spec: NormalizedBotSpec; nodeId: string }> = [];
   for (const schema of manifest.schemas) {

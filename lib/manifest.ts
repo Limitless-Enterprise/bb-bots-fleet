@@ -114,6 +114,7 @@ export function loadManifestFile(manifestPath: string) {
   const schemas = Object.entries(raw.schemas).map(([key, spec]) => {
     const foldedRaw = spec.foldedInto ?? (spec.data && "foldedInto" in spec.data ? spec.data.foldedInto : undefined);
     const folded = foldedRaw ? normalizeFoldedInto(foldedRaw) : undefined;
+    if (folded && spec.data && "role" in spec.data) throw new Error(`Schema ${key} cannot declare foldedInto together with a data bot`);
     const data = spec.data && !folded && "role" in spec.data ? {
       key: "data", role: spec.data.role, soulPath: (spec.data.soulFile ?? spec.data.soul)!,
       parentKey: spec.data.parent ?? null, projectRole: spec.data.projectRole ?? "member",
@@ -130,7 +131,12 @@ export function loadManifestFile(manifestPath: string) {
   for (const schema of schemas) {
     if (schema.data) {
       readSoul(baseDir, schema.data.soulPath);
-      if (schema.data.parentKey && !raw.bots[schema.data.parentKey]) throw new Error(`Unknown parent bot key: ${schema.data.parentKey}`);
+      if (schema.data.parentKey) {
+        if (!raw.bots[schema.data.parentKey]) {
+          if (schema.data.parentKey in raw.schemas) throw new Error(`Schema ${schema.key} data parent must name an app bot key, not schema key "${schema.data.parentKey}"`);
+          throw new Error(`Unknown parent bot key: ${schema.data.parentKey}`);
+        }
+      }
     }
   }
   return {
