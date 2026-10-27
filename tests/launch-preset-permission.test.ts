@@ -34,7 +34,7 @@ describe("fleet launch preset permissions", () => {
       initialPrompt: "go",
     };
     expect(parseStoredLaunchPreset(stored)?.execution?.permissionMode).toBeNull();
-    expect(launchPresetStoredSchema.parse(stored).execution?.permissionMode).toBeNull();
+    expect(launchPresetStoredSchema.parse(stored)?.execution?.permissionMode).toBeNull();
   });
 
   it("surfaces a warning when persisted bots still store full permission", async () => {

@@ -48,7 +48,8 @@ existing conversation histories and track legacy home project IDs for compatibil
   fire-and-forget thread.created event alone is insufficient. Configuration
   lookups are read-only; they must not preempt an inherited binding + join.
 - Legacy migration is snapshot-based and read-only for old projects. Keep old
-  main pointers/history. While sidebar `data.db` exists and migrate-from has not
+  main pointers/history. While sidebar migration is pending (sidebar source still
+  has bot data, including an unreadable `data.db`) and migrate-from has not
   recorded `plugin-migration-from`, defer version-1 project/KV import and reject
   `bot_create` with the migrate-from instruction. Import v2 state from legacy homes
   once when available, preserving a cached fallback and warning if unavailable; never
@@ -171,6 +172,8 @@ or reintroduce hover toolbars when making unrelated changes.
   separate Appearance/State tabs or a View bot state action.
   Save all changed fields atomically with the original revision and per-file hashes;
   invalid JSON/conflicts keep every draft and never partially save identity/state.
+  Section delete and closing with unsaved state/context drafts use plugin Dialog
+  confirmations, not `window.confirm`.
 - New bot drafts randomize color, shape, expression, and idle motion ONCE. Existing
   bots and rerenders never reroll. Offer Randomize appearance explicitly. Presets
   and random defaults are chromatic; no black/white/cream/gray (including migration
@@ -202,7 +205,9 @@ or reintroduce hover toolbars when making unrelated changes.
   the same identity revision and atomic Save; omitted fields from older clients
   preserve it, null clears it. Native provider/model and permission pickers use
   the bot's selected host. Model/permission overrides are opt-in; existing bots
-  inherit project defaults. A worktree preference changes only generic + starts
+  inherit project defaults. Custom permission saves allow accept-edits and auto
+  only; reject full on write paths. Coerce stored full to null and surface a
+  `bots_list` warning until rewritten. A worktree preference changes only generic + starts
   in owned projects, never personal chats or explicit checkout/fork actions.
   Starter prompts seed empty drafts only. Capture all seeds on opening, never
   reapply them over submitted selections, and forward executionInputSources and

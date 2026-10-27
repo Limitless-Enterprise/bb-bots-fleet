@@ -921,7 +921,7 @@ function BotsSidebar({ subPath }: PluginNavPanelProps) {
               { label: "New section…", action: () => setAddingSection(true) },
               ...(section.id ? [
                 { label: "Rename section…", action: () => setEditingSection(sections.find((entry) => entry.id === section.id) ?? null) },
-                { label: "Delete section", action: () => setPendingSectionDelete(section) },
+                { label: "Delete section", action: () => setPendingSectionDelete(sections.find((entry) => entry.id === section.id) ?? null) },
               ] : []),
             ]}><div className="px-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground" tabIndex={0}>{section.name}</div></RowContextMenu> : null}
             {section.id === null && section.bots.length === 0 && draggedBotId ? <div className="rounded border border-dashed border-border px-2 py-2 text-[10px] text-muted-foreground">Move to Main</div> : null}
