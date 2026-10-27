@@ -99,8 +99,21 @@ export function loadManifestFile(manifestPath: string) {
     projectRole: spec.projectRole ?? null, launch: launchFromBlock(spec.launch ?? spec.execution, defaultLaunch),
     main: Boolean(spec.main), nodeKind: "app", schemaKey: null,
   }));
+  const normalizeFoldedInto = (folded: string) => {
+    if (folded.includes("/")) {
+      if (!folded.startsWith(`${appName}/`)) throw new Error(`foldedInto must stay under app ${appName}: ${folded}`);
+      const suffix = folded.slice(appName.length + 1);
+      if (suffix !== "api" && suffix !== "builder") throw new Error("foldedInto must name an <app>/api or <app>/builder bot");
+      if (!raw.bots[suffix]) throw new Error(`foldedInto must name a bot key: ${suffix}`);
+      return folded;
+    }
+    if (!raw.bots[folded]) throw new Error(`foldedInto must name a bot key: ${folded}`);
+    if (folded !== "api" && folded !== "builder") throw new Error("foldedInto must name an api or builder bot key");
+    return `${appName}/${folded}`;
+  };
   const schemas = Object.entries(raw.schemas).map(([key, spec]) => {
-    const folded = spec.foldedInto ?? (spec.data && "foldedInto" in spec.data ? spec.data.foldedInto : undefined);
+    const foldedRaw = spec.foldedInto ?? (spec.data && "foldedInto" in spec.data ? spec.data.foldedInto : undefined);
+    const folded = foldedRaw ? normalizeFoldedInto(foldedRaw) : undefined;
     const data = spec.data && !folded && "role" in spec.data ? {
       key: "data", role: spec.data.role, soulPath: (spec.data.soulFile ?? spec.data.soul)!,
       parentKey: spec.data.parent ?? null, projectRole: spec.data.projectRole ?? "member",
@@ -119,7 +132,6 @@ export function loadManifestFile(manifestPath: string) {
       readSoul(baseDir, schema.data.soulPath);
       if (schema.data.parentKey && !raw.bots[schema.data.parentKey]) throw new Error(`Unknown parent bot key: ${schema.data.parentKey}`);
     }
-    if (schema.foldedInto && !raw.bots[schema.foldedInto]) throw new Error(`foldedInto must name a bot key: ${schema.foldedInto}`);
   }
   return {
     version: raw.version ?? 1, appName, projectSelector, defaultMachine, defaultLaunch, bots, schemas,

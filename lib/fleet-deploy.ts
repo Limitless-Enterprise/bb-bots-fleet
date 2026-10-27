@@ -106,7 +106,6 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     const metadata: BotNodeMetadata = { ...(schema.dataServicePath ? { dataServicePath: schema.dataServicePath } : {}), ...(schema.database ? { database: schema.database } : {}), ...(schema.foldedInto ? { foldedInto: schema.foldedInto } : {}) };
     let schemaNode = store.nodes.list().find((node) => node.parentNodeId === appNode!.id && node.name === schema.key);
     validateSchemaNodeMetadata(store.nodes.list(), appNode!, metadata);
-    if (metadata.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, metadata.foldedInto);
     if (!schemaNode) {
       schemaNode = { id: newNodeId(), kind: "schema", name: schema.key, parentNodeId: appNode!.id, projectId: null, sectionId: null, metadata, createdAt: Date.now() };
       if (!dryRun) store.nodes.save(schemaNode);
@@ -125,17 +124,22 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     if (schema.data && schemaNode) schemaUpserts.push({ spec: schema.data, nodeId: schemaNode.id });
   }
   for (const spec of topologicalBotOrder(manifest.bots)) await upsert(spec, appNode!.id);
+  for (const schema of manifest.schemas) {
+    if (schema.foldedInto && !dryRun) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, schema.foldedInto);
+  }
   for (const { spec, nodeId } of schemaUpserts) await upsert(spec, nodeId);
   for (const specialist of manifest.specialists) {
     const bot = resolveBotSelector(store, specialist);
     if (!bot.linkedProjectIds.includes(project.id) && !dryRun) await ops.updateProjectRole(bot.id, "join", project.id);
   }
+  let exitCode = 0;
   if (!dryRun) {
     for (const spec of [...manifest.bots, ...manifest.schemas.map((s) => s.data).filter(Boolean) as NormalizedBotSpec[]].filter((s) => s.main)) {
       const bot = spec.schemaKey
         ? store.list().find((entry) => entry.nodeId === resolveNodePath(store.nodes.list(), `${manifest.appName}/${spec.schemaKey}`).id && entry.name === "data")
         : store.list().find((entry) => entry.nodeId === appNode!.id && entry.name === spec.key);
       if (bot) {
+        const address = botAddress(store.nodes.list(), bot);
         let openMain = !bot.mainThreadId;
         if (!openMain && bot.mainThreadId) {
           try {
@@ -146,7 +150,13 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
           }
         }
         if (openMain) {
-          await runMainCommand([botAddress(store.nodes.list(), bot), "--project", project.id], ctx, bb, store, ops, personalProjectId, caller);
+          try {
+            await runMainCommand([address, "--project", project.id], ctx, bb, store, ops, personalProjectId, caller);
+            report.push({ action: "main", target: address, status: "opened" });
+          } catch (error) {
+            exitCode = 1;
+            report.push({ action: "main", target: address, status: error instanceof Error ? `failed: ${error.message}` : "failed" });
+          }
         }
       }
     }
@@ -155,5 +165,5 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   const treeStdout = previewTree
     ? (flags.json ? JSON.stringify(previewTree) : previewTree.apps.flatMap((block) => block.lines).join("\n"))
     : (await runTree([manifest.appName, ...(flags.json ? ["--json"] : [])], ctx, store)).stdout ?? "";
-  return { exitCode: 0, stdout: flags.json ? JSON.stringify({ dryRun, report, tree: treeStdout ? JSON.parse(treeStdout) : undefined }) : [...report.map((line) => `${line.status}\t${line.action}\t${line.target}`), "", treeStdout].join("\n") };
+  return { exitCode, stdout: flags.json ? JSON.stringify({ dryRun, report, tree: treeStdout ? JSON.parse(treeStdout) : undefined }) : [...report.map((line) => `${line.status}\t${line.action}\t${line.target}`), "", treeStdout].join("\n") };
 }
