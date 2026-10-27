@@ -27,7 +27,7 @@ const botSpecSchema = z.object({
   launch: launchBlockSchema.optional(),
   execution: launchBlockSchema.optional(),
   main: z.boolean().optional(),
-}).strict();
+}).strict().refine((spec) => Boolean(spec.soulFile ?? spec.soul), { message: "Bot spec requires soulFile or soul" });
 
 const schemaSpecSchema = z.object({
   dataServicePath: z.string().optional(),

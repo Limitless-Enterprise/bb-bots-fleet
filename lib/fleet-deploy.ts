@@ -18,9 +18,9 @@ const avatar = () => avatarSchema.parse({ color: "#168b75", shape: "round", expr
 
 export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb: BbPluginApi, store: BotStore, ops: FleetOps, personalProjectId: () => Promise<string>, caller: BotMetadata | null) {
   assertFleetRegistryOperator(ctx, caller);
-  const flags = { json: argv.includes("--json"), apply: argv.includes("--apply"), charter: argv.includes("--charter") };
+  const flags = { json: argv.includes("--json"), apply: argv.includes("--apply") };
   const manifestPath = argv.find((arg) => !arg.startsWith("--"));
-  if (!manifestPath) throw new Error("Usage: bb bots deploy <manifest> [--apply] [--charter] [--json]");
+  if (!manifestPath) throw new Error("Usage: bb bots deploy <manifest> [--apply] [--json]");
   const dryRun = !flags.apply;
   const manifest = loadManifestFile(manifestPath);
   const project = await resolveProject(bb, manifest.projectSelector);
@@ -35,11 +35,14 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   report.push({ action: "section", target: manifest.appName, status: sectionId ? "unchanged" : dryRun ? "skipped" : "created" });
 
   let appNode = store.nodes.list().find((node) => node.kind === "app" && node.name === manifest.appName && !node.parentNodeId) ?? null;
-  if (!appNode && dryRun) return { exitCode: 0, stdout: flags.json ? JSON.stringify({ dryRun, report }) : report.map((line) => `${line.status}\t${line.action}\t${line.target}`).join("\n") };
+  const deployNewApp = !appNode;
   if (!appNode) {
     appNode = { id: newNodeId(), kind: "app", name: manifest.appName, parentNodeId: null, projectId: project.id, sectionId: null, metadata: {}, createdAt: Date.now() };
-    store.nodes.save(appNode);
-    report.push({ action: "node", target: manifest.appName, status: "created" });
+    if (dryRun) report.push({ action: "node", target: manifest.appName, status: "skipped" });
+    else {
+      store.nodes.save(appNode);
+      report.push({ action: "node", target: manifest.appName, status: "created" });
+    }
   }
 
   const upsert = async (spec: NormalizedBotSpec, nodeId: string) => {
@@ -64,11 +67,15 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   for (const schema of manifest.schemas) {
     const metadata: BotNodeMetadata = { ...(schema.dataServicePath ? { dataServicePath: schema.dataServicePath } : {}), ...(schema.database ? { database: schema.database } : {}), ...(schema.foldedInto ? { foldedInto: schema.foldedInto } : {}) };
     let schemaNode = store.nodes.list().find((node) => node.parentNodeId === appNode!.id && node.name === schema.key);
-    if (!schemaNode && !dryRun) {
-      validateSchemaNodeMetadata(store.nodes.list(), appNode!, metadata);
-      if (metadata.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, metadata.foldedInto);
-      schemaNode = { id: newNodeId(), kind: "schema", name: schema.key, parentNodeId: appNode!.id, projectId: null, sectionId: null, metadata, createdAt: Date.now() };
-      store.nodes.save(schemaNode);
+    if (!schemaNode) {
+      if (dryRun) {
+        schemaNode = { id: newNodeId(), kind: "schema", name: schema.key, parentNodeId: appNode!.id, projectId: null, sectionId: null, metadata, createdAt: Date.now() };
+      } else {
+        validateSchemaNodeMetadata(store.nodes.list(), appNode!, metadata);
+        if (metadata.foldedInto) validateFoldedIntoAddress(store.nodes.list(), store.list(), appNode!, metadata.foldedInto);
+        schemaNode = { id: newNodeId(), kind: "schema", name: schema.key, parentNodeId: appNode!.id, projectId: null, sectionId: null, metadata, createdAt: Date.now() };
+        store.nodes.save(schemaNode);
+      }
     }
     if (schema.data && schemaNode) await upsert(schema.data, schemaNode.id);
   }
@@ -82,13 +89,22 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
       const bot = spec.schemaKey
         ? store.list().find((entry) => entry.nodeId === resolveNodePath(store.nodes.list(), `${manifest.appName}/${spec.schemaKey}`).id && entry.name === "data")
         : store.list().find((entry) => entry.nodeId === appNode!.id && entry.name === spec.key);
-      if (bot && !bot.mainThreadId) await runMainCommand([botAddress(store.nodes.list(), bot), "--project", project.id], ctx, bb, store, ops, personalProjectId, caller);
+      if (bot) {
+        let openMain = !bot.mainThreadId;
+        if (!openMain && bot.mainThreadId) {
+          const existing = await bb.sdk.threads.get({ threadId: bot.mainThreadId });
+          openMain = Boolean(existing.archivedAt);
+        }
+        if (openMain) await runMainCommand([botAddress(store.nodes.list(), bot), "--project", project.id], ctx, bb, store, ops, personalProjectId, caller);
+      }
     }
-    if (manifest.charter && flags.charter) {
+    if (manifest.charter) {
       const lead = store.list().find((entry) => entry.nodeId === appNode!.id && entry.name === manifest.charter!.toKey);
       if (lead?.mainThreadId) await bb.sdk.threads.send({ threadId: lead.mainThreadId, mode: "queue-if-active", input: [{ type: "text", text: readFileSync(manifest.charter.messagePath, "utf8"), mentions: [] }] });
     }
   }
-  const tree = await runTree([manifest.appName, ...(flags.json ? ["--json"] : [])], ctx, store);
-  return { exitCode: 0, stdout: flags.json ? JSON.stringify({ dryRun, report, tree: tree.stdout ? JSON.parse(tree.stdout) : undefined }) : [...report.map((line) => `${line.status}\t${line.action}\t${line.target}`), "", tree.stdout ?? ""].join("\n") };
+  const treeStdout = dryRun && deployNewApp
+    ? (flags.json ? JSON.stringify({ apps: [], shared: [] }) : "")
+    : (await runTree([manifest.appName, ...(flags.json ? ["--json"] : [])], ctx, store)).stdout ?? "";
+  return { exitCode: 0, stdout: flags.json ? JSON.stringify({ dryRun, report, tree: treeStdout ? JSON.parse(treeStdout) : undefined }) : [...report.map((line) => `${line.status}\t${line.action}\t${line.target}`), "", treeStdout].join("\n") };
 }
