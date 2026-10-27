@@ -137,8 +137,6 @@
 }
 .bot-topics { margin: 0.125rem 0.25rem 0.25rem 0.875rem; }
 .thread-row { position: relative; user-select: none; }
-.recent-row { user-select: none; }
-.recent-row[data-conversation-dragging="true"] { opacity: 0.45; }
 .bots-sidebar[data-conversation-dragging="true"] :is(a, button, .project-row) { cursor: grabbing; }
 .bots-sidebar[data-conversation-dragging="true"] .project-row[data-conversation-drop="true"] {
   box-shadow: inset 0 0 0 1px var(--border);
@@ -179,8 +177,6 @@
 }
 .thread-row:hover > .conversation-archive,
 .thread-row:has(:focus-visible) > .conversation-archive,
-.recent-row:hover > .conversation-archive,
-.recent-row:has(:focus-visible) > .conversation-archive,
 .conversation-archive:focus-visible {
   opacity: 1;
   pointer-events: auto;
@@ -188,13 +184,11 @@
 @media (hover: none), (pointer: coarse) {
   .conversation-archive, .bot-new-conversation { opacity: 1; pointer-events: auto; }
 }
-.thread-row[aria-current="page"],
-.recent-row[aria-current="page"] {
+.thread-row[aria-current="page"] {
   background: var(--state-active);
   color: var(--foreground);
 }
-.thread-row[data-active-descendant="true"],
-.recent-row[data-active-descendant="true"] {
+.thread-row[data-active-descendant="true"] {
   background: var(--state-active);
 }
 .conversation-disclosure {
@@ -239,28 +233,6 @@
 .conversation-status-working { animation: conversation-working-spin 1s linear infinite; }
 .conversation-status-error { color: var(--destructive); }
 @keyframes conversation-working-spin { to { transform: rotate(360deg); } }
-.recent-section {
-  background: transparent;
-}
-.chats-resize-handle {
-  position: relative;
-  height: 7px;
-  flex: 0 0 auto;
-  cursor: ns-resize;
-  touch-action: none;
-  user-select: none;
-}
-.chats-resize-handle::before {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--border);
-}
-.chats-resize-handle:hover::before,
-.chats-resize-handle:focus-visible::before { background: var(--muted-foreground); }
 .bot-avatar {
   display: block; overflow: visible; transform-origin: 50% 52%;
 }
