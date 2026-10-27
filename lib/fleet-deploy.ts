@@ -11,6 +11,13 @@ import { assertAppNodeNameAvailable, newNodeId, validateFoldedIntoAddress, valid
 import { botAddress, resolveBotSelector, resolveMachine, resolveProject } from "./fleet-resolve";
 import { loadManifestFile, readManifestSoul, topologicalBotOrder, type NormalizedBotSpec } from "./manifest";
 import { runMainCommand } from "./fleet-main";
+import {
+  ensureNamedSection,
+  FLEET_SECTION_NAME,
+  sectionAssignmentPlan,
+  sectionNameForBot,
+  SHARED_SECTION_NAME,
+} from "./fleet-sections";
 
 const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
 const avatar = () => avatarSchema.parse({ color: "#168b75", shape: "round", expression: "curious", motion: "still" });
@@ -79,10 +86,14 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
 
   let appNode = store.nodes.list().find((node) => node.kind === "app" && node.name === manifest.appName && !node.parentNodeId) ?? null;
 
-  const existingSectionId = store.sections().find((section) => section.name === manifest.appName)?.id ?? null;
-  let sectionId = existingSectionId;
-  if (!sectionId && !dryRun) sectionId = (await ops.createSection(manifest.appName)).id;
-  report.push({ action: "section", target: manifest.appName, status: existingSectionId ? "unchanged" : dryRun ? "skipped" : "created" });
+  const sectionReports: Array<{ name: string; status: string }> = [];
+  for (const name of [FLEET_SECTION_NAME, SHARED_SECTION_NAME, manifest.appName]) {
+    const { created } = await ensureNamedSection(store, ops, name, dryRun);
+    sectionReports.push({ name, status: created ? (dryRun ? "skipped" : "created") : "unchanged" });
+  }
+  const appSection = await ensureNamedSection(store, ops, manifest.appName, dryRun);
+  const sectionId = appSection.id;
+  for (const line of sectionReports) report.push({ action: "section", target: line.name, status: line.status });
 
   if (!appNode) {
     assertAppNodeNameAvailable(store.nodes.list(), store.list(), manifest.appName);
@@ -138,6 +149,16 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     if (spec.projectRole === "member" && !existing.linkedProjectIds.includes(project.id) && !dryRun) {
       await ops.updateProjectRole(existing.id, "join", project.id);
       joinedProject = true;
+    }
+    const targetSectionName = sectionNameForBot(spec.key, manifest.appName);
+    if (targetSectionName) {
+      const plan = sectionAssignmentPlan(existing, targetSectionName, store);
+      if (plan === "assign") {
+        const target = store.sections().find((section) => section.name === targetSectionName);
+        if (target) patch.sectionId = target.id;
+      } else if (plan === "blocked" && dryRun) {
+        report.push({ action: "section", target: address, status: `would-move-to-${targetSectionName}-blocked` });
+      }
     }
     if (Object.keys(patch).length && !dryRun) await ops.updateBot(existing.id, patch);
     report.push({ action: "bot", target: address, status: Object.keys(patch).length || joinedProject ? dryRun ? "skipped" : "updated" : "unchanged" });
@@ -225,6 +246,17 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
   for (const specialist of manifest.specialists) {
     const bot = resolveBotSelector(store, specialist);
     if (!bot.linkedProjectIds.includes(project.id) && !dryRun) await ops.updateProjectRole(bot.id, "join", project.id);
+    const targetSectionName = sectionNameForBot(bot.name, manifest.appName);
+    if (targetSectionName) {
+      const plan = sectionAssignmentPlan(bot, targetSectionName, store);
+      if (plan === "assign" && !dryRun) {
+        const target = store.sections().find((section) => section.name === targetSectionName);
+        if (target) await ops.updateBot(bot.id, { sectionId: target.id });
+        report.push({ action: "section", target: bot.name, status: "assigned" });
+      } else if (plan === "blocked" && dryRun) {
+        report.push({ action: "section", target: bot.name, status: `would-move-to-${targetSectionName}-blocked` });
+      }
+    }
   }
   if (!dryRun) {
     for (const spec of mainSpecs) {
