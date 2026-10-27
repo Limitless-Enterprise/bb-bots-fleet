@@ -31,7 +31,7 @@ export async function ensureNamedSection(
 ): Promise<{ id: string | null; created: boolean }> {
   const existing = store.sections().find((section) => section.name === name);
   if (existing) return { id: existing.id, created: false };
-  if (dryRun) return { id: null, created: false };
+  if (dryRun) return { id: null, created: true };
   const created = await ops.createSection(name);
   return { id: created.id, created: true };
 }

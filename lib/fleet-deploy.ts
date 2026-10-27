@@ -124,13 +124,17 @@ export async function runDeployCommand(argv: string[], ctx: PluginCliContext, bb
     if (!existing) {
       const currentOwner = store.projectOwner(project.id);
       const canClaimOwner = spec.projectRole === "owner" && !currentOwner;
+      const targetSectionName = sectionNameForBot(spec.key, manifest.appName);
+      const createSectionId = targetSectionName
+        ? store.sections().find((section) => section.name === targetSectionName)?.id ?? sectionId
+        : sectionId;
       if (!dryRun) {
         await ops.createBot({
           name: spec.key,
           role: spec.role,
           hostId: machine.id,
           avatar: avatar(),
-          sectionId,
+          sectionId: createSectionId,
           linkedProjectIds: [project.id],
           ownedProjectIds: canClaimOwner ? [project.id] : undefined,
           soul,
