@@ -432,7 +432,7 @@ non-archived bot conversations,
 including inherited children and hidden conversations: waiting takes precedence over
 working, then error, then idle. Visibility separately reflects the bot's hidden setting.
 
-Fleet registry commands (see the [Bots CLI LLD](https://github.com/Limitless-Enterprise/srs/blob/docs/agent-fleet-design/agent-fleet/03-architecture/low-level-design-bots-cli.md)
+Fleet registry commands (see the [Bots CLI LLD](https://github.com/Limitless-Enterprise/srs/blob/main/agent-fleet/03-architecture/low-level-design-bots-cli.md)
 for full flags) manage app/schema nodes and bot records in plugin storage:
 
 ```sh
