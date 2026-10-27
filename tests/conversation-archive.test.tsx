@@ -2,7 +2,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, within } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { bot, personalProjectId, thread } from "./fixtures";
 
 const app = await loadPluginApp(() => import("../app"));
@@ -13,7 +14,7 @@ async function mount(personal: boolean) {
     thread("archived", 500, { isArchived: true }), ...Array.from({ length: 9 }, (_, i) => thread(`recent-${i}`, 100 - i)),
   ].map(row => ({ ...row, projectId: personal ? personalProjectId : "project" }));
   const onNavigate = vi.fn();
-  const slot = renderSlot(app.threadLists[0]!, { activeThreadId: "root", activeProjectId: rows[0]!.projectId, isCompactViewport: false, onNavigate, searchQuery: "" }, {
+  const slot = renderBotsSidebar(app, "thread/root", {
     sidebarThreads: { projects: [{ id: rows[0]!.projectId, name: "Project", isPersonal: personal, href: "/projects/project", settingsHref: "/projects/project/settings" }], threads: rows },
     rpc: { bots_list: () => ({ bots: personal ? [] : [bot], personalProjectId, hosts: [], sections: [], projects: [], warnings: [], threadBindings: personal ? [] : rows.filter(row => !row.parentThreadId).map(row => ({ threadId: row.id, botId: bot.id })) }) },
   });

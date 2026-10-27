@@ -5,7 +5,8 @@ import { rpcContract, type BotMetadata } from "../contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { bot, personalProjectId, request, thread } from "./fixtures";
 import { conversationDraftKey, worktreeLaunchEnvironment } from "../lib/worktree-launch";
 
@@ -36,9 +37,7 @@ async function mount({
   rows = [thread("main", 100)],
   bindings = [{ botId: bot.id, threadId: "main" }, { botId: bot.id, threadId: "0" }],
 }: { bots?: BotMetadata[]; rows?: ReturnType<typeof thread>[]; bindings?: Array<{ botId: string; threadId: string }> } = {}) {
-  const slot = renderSlot(app.threadLists[0]!, {
-    activeThreadId: "main", activeProjectId: "project", isCompactViewport: false, onNavigate: vi.fn(), searchQuery: "",
-  }, {
+  const slot = renderBotsSidebar(app, "thread/main", {
     sidebarThreads: { projects: [
       { id: "project", name: "Shared project", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" },
       { id: "second", name: "Second project", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" },

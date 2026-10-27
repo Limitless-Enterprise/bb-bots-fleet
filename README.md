@@ -11,7 +11,7 @@ Agent Fleet design docs ([ADR 0006](https://github.com/Limitless-Enterprise/srs/
 require upstream attribution here; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 covers bloub only.
 
-Requires BB 0.46.1 or newer (Plugin SDK 0.6.49). Conversation menus and archive
+Requires BB 0.46.1 or newer (Plugin SDK 0.6.77 or newer; BB 0.47.1 ships host SDK 0.6.77). Conversation menus and archive
 buttons use BB's native thread actions, including confirmation, Undo, and actions
 from other plugins. Rows follow native titles, links, draft indicators, plugin
 statuses, and keyboard shortcuts. Provider session options from the native new
@@ -53,7 +53,7 @@ saved presets do not override them.
 [Open the screenshot gallery](docs/screenshots/index.html). All illustrations use
 synthetic data; private-session captures do not belong in published assets.
 
-Demo data only: [Sidebar](docs/screenshots/sidebar.png) ·
+Demo data only: [Bots rail panel](docs/screenshots/sidebar.png) (sidebar + in-panel chat) ·
 [Activity badge](docs/screenshots/bot-activity.png) ·
 [Bot new-conversation action](docs/screenshots/bot-new-chat-hover.png) ·
 [Hover archive](docs/screenshots/conversation-hover.png) ·
@@ -195,7 +195,27 @@ Unused optional tool fields may be omitted or null. Shared memory, routines,
 channels, and scheduled skills are deliberately out of scope. Never store secrets
 in bot state.
 
+## Bots navigation rail
+
+Bots Fleet registers BB's **Bots** navigation-rail panel: the familiar sidebar
+tree on the left and conversation content on the right. The rail icon can show a
+badge for **bot-assigned** conversations only (explicit bindings and child
+threads that inherit a bound ancestor—not unassigned **Chats**): a warning count
+when those conversations wait for your input, or a critical dot when unread
+assigned conversations have errors (no count).
+
+- The panel home offers **Create bot** and **New chat** when no conversation is
+  selected.
+- Click a sidebar row to open that conversation **in the panel** with full
+  `ThreadChat` (permissions inherit from the conversation).
+- **Open in BB** in the panel header opens the same conversation in BB's main
+  workspace. Hold **Cmd** (macOS) or **Ctrl** (other platforms) when clicking a
+  sidebar row or **Open in BB** to open it in a split main-workspace view
+  instead.
+
 ## Sidebar interactions
+
+Within the Bots nav rail, the sidebar tree behaves as follows:
 
 - Click a bot to open the **first conversation in its list**, without expanding
   or collapsing it. The end chevron independently toggles the full list and

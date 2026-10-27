@@ -3,11 +3,12 @@ import { useState } from "react";
 import { afterEach, expect, it } from "vitest";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { bot, personalProjectId, thread } from "./fixtures";
 
 const app = await loadPluginApp(() => import("../app"));
-const Sidebar = app.threadLists[0]!.component;
+const Sidebar = botsSidebarComponent(app);
 afterEach(cleanup);
 
 async function mount(personal: boolean, older = false) {
@@ -20,10 +21,10 @@ async function mount(personal: boolean, older = false) {
     ...(older ? Array.from({ length: 10 }, (_, i) => thread(`recent-${i}`, 100 - i)) : []),
   ].map((row) => ({ ...row, projectId }));
   function Host() {
-    const [activeThreadId, setActiveThreadId] = useState(older ? "main" : "root");
+    const [subPath, setSubPath] = useState(older ? "thread/main" : "thread/root");
     return <>
-      <button onClick={() => setActiveThreadId("grandchild")}>Navigate grandchild</button>
-      <Sidebar activeThreadId={activeThreadId} activeProjectId={projectId} isCompactViewport={false} onNavigate={() => {}} searchQuery="" />
+      <button onClick={() => setSubPath("thread/grandchild")}>Navigate grandchild</button>
+      <Sidebar subPath={subPath} />
     </>;
   }
   const slot = renderSlot({ component: Host }, {}, {

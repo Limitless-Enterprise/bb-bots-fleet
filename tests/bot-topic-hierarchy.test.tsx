@@ -3,7 +3,8 @@ import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { bot, personalProjectId, thread } from "./fixtures";
 
 const split = vi.hoisted(() => ({ onPointerDown: vi.fn() }));
@@ -12,7 +13,7 @@ vi.mock("@get-bb/plugin-sdk/app", async importOriginal => {
   return { ...sdk, experimental_useSidebarThreadSplit: () => ({ splitProps: { onPointerDown: split.onPointerDown }, isAvailable: true, layout: null }) };
 });
 const app = await loadPluginApp(() => import("../app"));
-const Sidebar = app.threadLists[0]!.component;
+const Sidebar = botsSidebarComponent(app);
 let hit: Element | null = null;
 const originalHitTest = Object.getOwnPropertyDescriptor(document, "elementFromPoint");
 beforeEach(() => { hit = null; split.onPointerDown.mockClear(); Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => hit }); });
@@ -23,9 +24,9 @@ async function mount(fail = false) {
   const rows = [thread("main", 1000), thread("first", 20), thread("last", 10),
     thread("child", 30, { parentThreadId: "main" }), thread("grandchild", 40, { parentThreadId: "child" })];
   function Host() {
-    const [activeThreadId, setActive] = useState<string | null>(null);
-    return <><button onClick={() => setActive("grandchild")}>Go grandchild</button><button onClick={() => setActive(null)}>Go elsewhere</button>
-      <Sidebar activeThreadId={activeThreadId} activeProjectId="project" isCompactViewport={false} onNavigate={() => {}} searchQuery="" /></>;
+    const [subPath, setSubPath] = useState("");
+    return <><button onClick={() => setSubPath("thread/grandchild")}>Go grandchild</button><button onClick={() => setSubPath("")}>Go elsewhere</button>
+      <Sidebar subPath={subPath} /></>;
   }
   const slot = renderSlot({ component: Host }, {}, {
     sidebarThreads: { projects: [{ id: "project", name: "Project", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" }], threads: rows },
@@ -51,7 +52,7 @@ it("opens the first ordered conversation without unfolding, not the legacy main"
   const { slot, botRow, toggle, open } = await mount();
   expect(botRow.lastElementChild).toBe(toggle()); expect(toggle().textContent?.trim()).toBe("3");
   fireEvent.click(open());
-  expect(slot.inspection.navigateCalls).toEqual([{ method: "toThread", threadId: "first", options: undefined }]);
+  expect(slot.inspection.navigateCalls).toEqual([botsPanelNavigateCall("first")]);
   expect(toggle().getAttribute("aria-expanded")).toBe("false");
   expect(slot.queryByRole("group", { name: "Conversations for Test bot" })).toBeNull();
   fireEvent.click(toggle());
@@ -70,8 +71,8 @@ it("double-clicking the bot toggles the list once, without duplicate navigation"
     expect(slot.queryByText("Conversation child")).toBeNull();
   }
   expect(slot.inspection.navigateCalls).toEqual([
-    { method: "toThread", threadId: "first", options: undefined },
-    { method: "toThread", threadId: "first", options: undefined },
+    botsPanelNavigateCall("first"),
+    botsPanelNavigateCall("first"),
   ]);
   fireEvent.doubleClick(toggle());
   expect(toggle().getAttribute("aria-expanded")).toBe("false");
@@ -141,7 +142,7 @@ it.each(["before", "after"])("dragging %s persists order without nesting or navi
   const expected = position === "before" ? ["last", "first", "main"] : ["first", "last", "main"];
   await waitFor(() => expect(Array.from(slot.container.querySelectorAll('[data-sidebar-thread-id]')).map(row => row.getAttribute("data-sidebar-thread-id"))).toEqual(expected));
   expect(slot.inspection.navigateCalls).toEqual([]); expect(slot.inspection.rpcCalls.some(call => call.method === "conversation_nest" || call.method === "bots_reorder")).toBe(false);
-  fireEvent.click(open()); expect(slot.inspection.navigateCalls[0]).toMatchObject({ threadId: expected[0] });
+  fireEvent.click(open()); expect(slot.inspection.navigateCalls[0]).toEqual(botsPanelNavigateCall(expected[0]!));
 });
 
 it("drops an existing root on its own bot to make it first without navigation or collapse", async () => {
@@ -163,6 +164,6 @@ it("archives the first row and opens the next without replacing a main", async (
   const { slot, toggle, open } = await mount(); fireEvent.click(toggle());
   fireEvent.click(slot.getByRole("button", { name: "Archive Conversation first" })); fireEvent.click(open());
   expect(slot.nativeActionCalls).toEqual([{ key: "bb--core/archive", threadId: "first" }]);
-  expect(slot.inspection.navigateCalls).toEqual([{ method: "toThread", threadId: "first", options: undefined }]);
+  expect(slot.inspection.navigateCalls).toEqual([botsPanelNavigateCall("first")]);
   expect(slot.inspection.rpcCalls.every(call => call.method === "bots_list")).toBe(true);
 });

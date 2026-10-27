@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { renderSlot } from "./sidebar-host";
+import { botsNavPanel, botsSidebarComponent, renderBotsSidebar, renderSlot } from "./sidebar-host"
+import { botsPanelNavigateCall } from "../lib/bots-panel";
 import { bot, personalProjectId, thread } from "./fixtures";
 
 const app = await loadPluginApp(() => import("../app"));
@@ -10,10 +11,7 @@ afterEach(cleanup);
 
 async function mount(withChat = false, status: Partial<ReturnType<typeof thread>> = {}, withHidden = false) {
   const onNavigate = vi.fn();
-  const slot = renderSlot(app.threadLists[0]!, {
-    activeThreadId: "main", activeProjectId: "project", isCompactViewport: false,
-    onNavigate, searchQuery: "",
-  }, {
+  const slot = renderBotsSidebar(app, "thread/main", {
     sidebarThreads: {
       projects: [{ id: "project", name: "Test bot", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" }, ...(withChat ? [{ id: "personal", name: "Personal", isPersonal: true, href: "/projects/project", settingsHref: "/projects/project/settings" }] : []), ...(withHidden ? [{ id: "hidden", name: "Hidden bot", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" }] : [])],
       threads: [thread("main", 1000), ...Array.from({ length: 10 }, (_, i) => thread(String(i), 100 - i, i === 0 ? status : {})), ...(withChat ? [thread("chat", 200, { ...status, projectId: "personal", environment: null })] : [])],

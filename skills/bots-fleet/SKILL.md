@@ -27,9 +27,9 @@ The runtime plugin ID is `bots-fleet`; its CLI is `bb bots`.
   as editable files. Operator shell: `bb bots memory …` (not from a BB thread).
 - A project has at most one owner and may have many bot members. Ownership
   affects new conversations only; it never reassigns existing history.
-- In the sidebar, a bot opens its first manually ordered conversation; its
-  chevron expands all roots. Right-click for bot settings or a new project/
-  worktree conversation. Worktree starts seed a fresh worktree in BB's composer.
+- The **Bots** nav-rail sidebar follows README § Bots navigation rail and §
+  Sidebar interactions (first-conversation click target, chevron expansion,
+  right-click menus, worktree composer seeds).
 - Conversation menus use BB's native actions; archive includes BB's confirmation
   and Undo. Older unassigned Chats appear under the clickable Other count.
 - Edit bot has Bot, Context, Projects, and (for existing bots) Memory tabs.
