@@ -45,7 +45,6 @@ const rawManifestSchema = z.object({
   bots: z.record(z.string(), botSpecSchema).default({}),
   schemas: z.record(z.string(), schemaSpecSchema).default({}),
   specialists: z.array(z.string()).default([]),
-  charter: z.object({ to: z.string(), messageFile: z.string() }).strict().optional(),
 }).strict();
 
 export type NormalizedBotSpec = {
@@ -119,13 +118,9 @@ export function loadManifestFile(manifestPath: string) {
     if (schema.data) readSoul(baseDir, schema.data.soulPath);
     if (schema.foldedInto && !raw.bots[schema.foldedInto]) throw new Error(`foldedInto must name a bot key: ${schema.foldedInto}`);
   }
-  const charter = raw.charter
-    ? { toKey: raw.charter.to, messagePath: resolve(baseDir, raw.charter.messageFile), message: readFileSync(resolve(baseDir, raw.charter.messageFile), "utf8") }
-    : null;
   return {
     version: raw.version ?? 1, appName, projectSelector, defaultMachine, defaultLaunch, bots, schemas,
     specialists: raw.specialists,
-    charter,
     baseDir,
   };
 }

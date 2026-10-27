@@ -27,8 +27,12 @@ export async function runMainCommand(argv: string[], ctx: PluginCliContext, bb: 
   const projectId = flags.personal ? personalId : flags.project ? (await resolveProject(bb, String(flags.project))).id : store.ownedProjects(bot.id)[0];
   if (!projectId) throw new Error("Choose --project or --personal; this bot owns no project");
   if (bot.mainThreadId && !flags.replace) {
-    const existing = await bb.sdk.threads.get({ threadId: bot.mainThreadId });
-    if (!existing.archivedAt) throw new Error("Bot already has a live main conversation. Pass --replace to move the main pointer.");
+    try {
+      const existing = await bb.sdk.threads.get({ threadId: bot.mainThreadId });
+      if (!existing.archivedAt) throw new Error("Bot already has a live main conversation. Pass --replace to move the main pointer.");
+    } catch (error) {
+      if (error instanceof Error && error.message === "Bot already has a live main conversation. Pass --replace to move the main pointer.") throw error;
+    }
   }
   const warnings: string[] = [];
   const presetFromFlags = parseLaunchPresetFromFlags(flags, bot.launchPreset ?? null);
